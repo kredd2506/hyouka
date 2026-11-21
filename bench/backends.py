@@ -50,9 +50,9 @@ def make_fixture():
     sionna.phy.config.seed = 7
     link = SionnaLink()
     for b in BATCH_SIZES:
-        batch = link.sample_torch(b, torch.empty(b).uniform_(-5.0, 10.0))
+        batch = {k: v.cpu() for k, v in link.sample_torch(b, torch.empty(b).uniform_(-5.0, 10.0)).items()}
         with torch.no_grad():
-            llr = ref(batch["y"], batch["no"]).numpy()
+            llr = ref(batch["y"], batch["no"]).numpy()  # reference LLRs always from torch on CPU
         np.savez(FIXTURES / f"batch_{b}.npz", y=batch["y"].numpy(), no=batch["no"].numpy(), llr=llr)
     print(f"fixtures written to {FIXTURES}/")
 

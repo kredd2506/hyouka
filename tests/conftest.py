@@ -4,6 +4,9 @@ import torch
 
 from nrx.data import SionnaLink
 
+# Tests run on CPU even on a GPU host: they compare against numpy and a CPU torch model.
+sionna.phy.config.device = "cpu"
+
 
 @pytest.fixture(scope="session")
 def link():

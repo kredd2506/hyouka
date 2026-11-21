@@ -39,11 +39,12 @@ def pilot_positions(resource_grid) -> np.ndarray:
     pp = resource_grid.pilot_pattern
     old = pp.pilots.clone()
     n = old.shape[-1]
-    tags = torch.exp(1j * 2 * math.pi * torch.arange(n) / (4 * n)).to(old.dtype).reshape(old.shape)
+    tags = torch.exp(1j * 2 * math.pi * torch.arange(n) / (4 * n)).to(old.dtype).reshape(old.shape).to(old.device)
     pp.pilots = tags
-    x = ResourceGridMapper(resource_grid)(torch.zeros(1, 1, 1, CONFIG.num_data_symbols, dtype=old.dtype))
+    x = ResourceGridMapper(resource_grid)(
+        torch.zeros(1, 1, 1, CONFIG.num_data_symbols, dtype=old.dtype, device=old.device))
     pp.pilots = old
-    flat = x.reshape(-1)
+    flat = x.reshape(-1).cpu()
     pos = torch.nonzero(flat.abs() > 0.5).flatten()
     order = torch.argsort(torch.angle(flat[pos]) % (2 * math.pi))
     return pos[order].numpy().astype(np.int32)
@@ -68,12 +69,12 @@ def recover(steps=300, batch_size=32, ebno_db=4.0, seed=0) -> np.ndarray:
         out = link.sample_torch(batch_size, ebno_db)
         c = out["c"]
         x_data = ResourceGridMapper(rg)(link._mapper(c.reshape(batch_size, 1, 1, -1))).reshape(batch_size, T * F)
-        x_data[:, torch.as_tensor(np.array(positions), dtype=torch.long)] = 0
+        x_data[:, torch.as_tensor(np.array(positions), dtype=torch.long, device=x_data.device)] = 0
         h = out["h"][:, 0, :, 0, 0].reshape(batch_size, CONFIG.num_rx_ant, T * F)
         no = out["no"]
         std = torch.sqrt(no / 2)[:, None, None]
         noise = std * (torch.randn_like(h.real) + 1j * torch.randn_like(h.real))
-        return [jnp.asarray(v.numpy()) for v in (h, x_data, noise, no, c)]
+        return [jnp.asarray(v.cpu().numpy()) for v in (h, x_data, noise, no, c)]
 
     batches = [draw() for _ in range(4)]
     params = load_reference()

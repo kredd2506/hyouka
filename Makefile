@@ -11,7 +11,7 @@ STEPS ?= 30000
 RUN ?= checkpoints/run1
 
 .PHONY: help host-info setup weights test fixtures backends compiler onnx sweep-reduced sweep train eval-trained \
-        pilots-recover pilots-cuda all-local all-cloud clean
+        pilots-recover pilots-cuda trt all-local all-cloud clean
 
 help:  ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -71,3 +71,6 @@ all-cloud: test pilots-cuda backends compiler onnx sweep train eval-trained  ## 
 
 clean:  ## Remove generated data (keeps weights, results, checkpoints)
 	rm -rf data/ .pytest_cache
+
+trt: onnx  ## TensorRT fp32/fp16 engines timed like `backends` (needs: uv pip install tensorrt-cu13|cu12)
+	$(UV_RUN) python bench/trt_bench.py

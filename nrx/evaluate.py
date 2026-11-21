@@ -45,7 +45,7 @@ def torch_llr_fn():
     model = torch_ref.NeuralReceiver()
     model.load_state_dict(torch.load(WEIGHTS, weights_only=True, map_location="cpu"))
     model.eval().to(sionna.phy.config.device)
-    indices = torch.as_tensor(data_re_indices(), dtype=torch.long)
+    indices = torch.as_tensor(data_re_indices(), dtype=torch.long, device=sionna.phy.config.device)
 
     def run(y, no):
         llr = model(y, no)
@@ -139,8 +139,21 @@ def plot(curves: dict, reference: dict, path):
     plt.savefig(path, dpi=130)
 
 
+def summarize(paths):
+    """Print Eb/N0 at BLER 1e-2/1e-3/1e-4 for every system in the given sweep CSVs."""
+    targets = (1e-2, 1e-3, 1e-4)
+    print(f"{'file:system':44}" + "".join(f"{'@' + f'{t:.0e}':>9}" for t in targets))
+    for path in paths:
+        if not pathlib.Path(path).exists():
+            continue
+        for name, (x, y) in read_curves(path).items():
+            label = f"{pathlib.Path(path).stem}:{name}"[:44]
+            print(f"{label:44}" + "".join(f"{ebno_at_bler(x, y, t):>9.2f}" for t in targets))
+
+
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--summary", nargs="+", metavar="CSV", help="only print BLER crossings of existing sweeps")
     ap.add_argument("--systems", nargs="+", default=["jax-ported"], choices=SYSTEMS)
     ap.add_argument("--checkpoint", help="orbax checkpoint dir for jax-trained")
     ap.add_argument("--batch-size", type=int, default=128)
@@ -149,6 +162,9 @@ def main():
     ap.add_argument("--ebno-max", type=float, default=CONFIG.ebno_db_max)
     ap.add_argument("--out", default="results/ber_bler.csv")
     args = ap.parse_args()
+    if args.summary:
+        summarize(args.summary)
+        return
 
     params = None
     if "jax-trained" in args.systems:

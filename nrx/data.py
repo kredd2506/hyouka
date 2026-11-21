@@ -43,9 +43,9 @@ def data_re_indices(cfg: Config = CONFIG) -> np.ndarray:
     """Flat (symbol * fft_size + subcarrier) indices of data REs, in the order
     Sionna's ResourceGridDemapper emits them (and the mapper consumes coded bits)."""
     demapper = ResourceGridDemapper(make_resource_grid(cfg), make_stream_management())
-    grid = torch.arange(cfg.num_ofdm_symbols * cfg.fft_size, dtype=torch.float32)
+    grid = torch.arange(cfg.num_ofdm_symbols * cfg.fft_size, dtype=torch.float32, device=sionna.phy.config.device)
     grid = grid.reshape(1, 1, 1, cfg.num_ofdm_symbols, cfg.fft_size, 1)
-    return demapper(grid).reshape(-1).numpy().astype(np.int32)
+    return demapper(grid).reshape(-1).cpu().numpy().astype(np.int32)
 
 
 def gather_data_llrs(llr: jnp.ndarray, indices: jnp.ndarray) -> jnp.ndarray:
