@@ -76,13 +76,13 @@ Sionna's CDL-C generation is the likely bottleneck, not the NRX. Plan for:
 - [x] `nrx/evaluate.py`: `sim_ber` sweep for `jax-ported`, `torch-ref`, both baselines, `jax-trained`; same seed per system → same channel draws
 - [x] **Pilots fix**: Sionna 2.x draws Kronecker pilots from the device RNG; the weights were trained on CUDA (seed 42), so CPU pilots don't match and the NRX fails (BER ≈ 0.44). `nrx/pilots.py` recovers them from the weights by gradient ascent on the BMD rate (y is linear in pilots), snaps to QPSK, greedy polish → `assets/pilots_recovered.npy` (tracked). `make_resource_grid()` applies it; `NRX_PILOTS=path` overrides.
 - [x] Reduced sweep (`max_mc_iter=40`): `results/ber_bler_ported_reduced.{csv,png}`. jax-ported ≡ torch-ref. vs notebook NRX at BLER 1e-1/1e-2/1e-3: −1.49/−1.05/−0.01 dB vs −1.53/−1.03/+0.14 dB
-- [ ] Full sweep at `max_mc_iter=1000` to resolve 1e-4 (acceptance #2) — cloud
+- [x] Full sweep at `max_mc_iter=1000` (Colab L4): jax-ported ≡ torch-ref, 2.33 dB @1e-4 vs notebook 2.21 → acceptance #2 met
 
 ## 7. Train from scratch — code ✅, run on cloud
 - [x] `nrx/loss.py`: BMD rate over data REs (static gather)
 - [x] `nrx/train.py`: jitted step, Adam (torch defaults), one Eb/N0 per batch, Sionna in a prefetch thread, Orbax every 1k (resumable), `train_log.csv` with step/wait ms, asserts **one trace**
 - [x] CPU smoke: 40 steps at B=16, rate −3.0 → −0.03, 1 trace, resume + `load_checkpoint` OK; `tests/test_train.py`
-- [ ] 30k steps at B=128 — cloud (CPU ≈ 0.2 s/step at B=16)
+- [ ] 30k steps at B=128 — 5k done on L4 (rate 0.76, 159 ms/step, data wait ≈ 0); full run next session
 
 ## 8. Evaluate trained model
 - [ ] Run step 6 sweep with the trained checkpoint

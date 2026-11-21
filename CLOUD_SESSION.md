@@ -27,15 +27,21 @@ Fill in as you go. Times are wall clock.
 
 | # | Target | Host | Started | Took | Result / notes |
 |---|---|---|---|---|---|
-| 0 | `make host-info` | | | | |
-| 1 | `make test` | | | | |
-| 2 | `make pilots-cuda` | | | | __/232 pilots differ |
-| 3 | `make backends` | | | | B=1 p99 = __ ms |
-| 4 | `make compiler` | | | | kernels = __, conv share = __% |
-| 5 | `make trt` (after `uv pip install tensorrt-cu13`) | | | | TRT B=1 = __ ms |
-| 6 | `make sweep` | | | | NRX @1e-4 = __ dB (notebook 2.21) |
-| 7 | `make train` | | | | final rate = __, __ ms/step, traces = 1 |
-| 8 | `make eval-trained` | | | | trained @1e-4 = __ dB |
+| 0 | `make host-info` | Colab L4 | 2026-11-21 12:21 UTC | | NVIDIA L4 24 GB, driver 580.82, torch 2.15.0+cu132, jax 0.12.1 CUDA |
+| 1 | `make test` | L4 | | | 11 passed |
+| 2 | `make pilots-cuda` | L4 | | | 20/232 differ from the polished recovery; **0/232 from gradient-only recovery** |
+| 3 | `make backends` | L4 | | | B=1 p50 0.78 / p99 0.90 ms; B=128 44.7 ms. LLR err 6e-3–2e-2 → **TF32** convs |
+| 4 | `make compiler` | L4 | | | 60 kernels (49 kInput, 9 kCustom, 2 kLoop); 10 cuDNN convBiasActivation (bias fused). Isolated-op timing invalid on GPU (dispatch overhead) |
+| 5 | `make trt` | L4 | | | **not run**: `import tensorrt` failed after `uv pip install -q tensorrt-cu13` (output hidden by -q) |
+| 6 | `make sweep` | L4 | | | NRX @1e-4 = 2.33 dB (notebook 2.21; CUDA pilots 2.41); jax ≡ torch |
+| 7 | `make train` | L4 | | | **5k of 30k steps**: rate 0.76, 159 ms/step, Sionna wait 0.02 ms, traces = 1 |
+| 8 | `make eval-trained` | L4 | | | 5k-step model @1e-2 = 1.51 dB (ref −1.03): undertrained |
+
+### Next session
+- [ ] TensorRT: install without `-q`, verify `import tensorrt`, then `make trt`
+- [ ] Precision: XLA with `jax_default_matmul_precision=highest` vs TF32; TensorRT with TF32 on/off
+- [ ] GPU time breakdown by ablation inside the full graph (isolated ops are dominated by dispatch)
+- [ ] Train the full 30k steps (~80 min on L4 at 159 ms/step); `make eval-trained`
 
 ## Bring back
 - [ ] `results/` (latency jsonl, compiler md, sweeps csv/png, host info)

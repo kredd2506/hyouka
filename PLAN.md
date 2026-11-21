@@ -81,7 +81,7 @@ Package lives at the repo root.
 
 ## Acceptance criteria
 - [x] Ported-weights Flax model matches torch LLRs within 1e-4 (4.96e-5, CPU)
-- [ ] Ported model's BLER curve overlays Sionna reference (≤ 0.2 dB gap)
+- [x] Ported model's BLER curve overlays Sionna reference (≤ 0.2 dB gap): 0.00/0.07/0.12 dB at 1e-2/1e-3/1e-4 (L4, full sweep; ±~0.15 dB MC noise at 1e-4)
 - [ ] JAX-trained model reaches BLER 1e-4 within 0.5 dB of the reference NRX (reference: ~2.5 dB Eb/N0; perfect CSI ~1.0 dB; LS ~5.5 dB)
 - [x] All shapes static; train step compiles once (no retracing) — asserted in `train.py` and `tests/test_train.py`
 

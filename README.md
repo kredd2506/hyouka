@@ -34,7 +34,10 @@ the same BLER for the JAX and torch receivers, and both sit within 0.15 dB of th
 
 ![BLER](results/ber_bler_ported_reduced.png)
 
-BLER 1e-4 needs the full sweep (`make sweep`, GPU).
+**Full sweep (Colab L4, notebook settings).** JAX and torch are again identical. At BLER 1e-2 / 1e-3 / 1e-4 the
+port sits at −1.03 / 0.21 / 2.33 dB against the notebook's −1.03 / 0.14 / 2.21 dB, a gap of 0.00 / 0.07 / 0.12 dB.
+At 1e-4 each point rests on ~13 block errors, so that last number carries roughly ±0.15 dB of Monte-Carlo noise.
+See `results/ber_bler_ported.{csv,png}`.
 
 **3. The same code runs on more than one backend.** Apple M4 Pro, B = 1 (one user per slot):
 
@@ -42,9 +45,11 @@ BLER 1e-4 needs the full sweep (`make sweep`, GPU).
 |---|---|---|---|
 | XLA:CPU (jax 0.12.1) | 3.04 ms | 3.17 ms | 4.96e-5 |
 | Metal GPU via `jax-metal` PJRT plugin (jax 0.4.34) | 1.25 ms | 1.34 ms | 3.72e-5 |
+| XLA:GPU on NVIDIA L4 (jax 0.12.1, CUDA 13) | 0.78 ms | 0.90 ms | 6.2e-3 (TF32) |
 
 The model costs 4.05 GFLOP per user per slot, so meeting 0.5 ms at B = 1 needs ≥ 8.1 TFLOP/s sustained.
-GPU and TPU numbers come next.
+The L4 runs its convolutions in TF32 by default (10-bit mantissa), hence the larger LLR error. True-fp32 and
+TensorRT numbers on the same GPU come next.
 
 **4. A look inside the compiler (XLA:CPU, B = 1).** 186 jaxpr equations become 305 StableHLO ops and then
 62 kernels. Convs take ~75% of the time and LayerNorm ~20%. Each LayerNorm becomes 5 kernels, and the conv bias add
@@ -58,8 +63,8 @@ network-level parity test can't catch this, because both models get the same wro
 
 [`nrx/pilots.py`](nrx/pilots.py) recovers them from the weights. The received grid is linear in the pilots, so it
 maximizes the receiver's BMD rate over the 232 pilot values with JAX gradients and snaps the result to QPSK. The
-recovered pilots are checked in at [`assets/pilots_recovered.npy`](assets/pilots_recovered.npy) and applied
-automatically. `make pilots-cuda` regenerates the exact ones on a CUDA host and diffs them.
+result matches all 232 pilots regenerated from the CUDA RNG on a Colab L4. Both sets are checked in
+([`assets/`](assets/)), and the CUDA set is applied automatically.
 
 ---
 
@@ -164,7 +169,7 @@ Generated and ignored: `weights/`, `data/` (fixtures, XLA dumps), `checkpoints/`
 - [x] Port + weight parity (< 1e-4)
 - [x] Reduced BLER overlay (≤ 0.15 dB down to 1e-3)
 - [x] Training loop compiles once (verified on CPU)
-- [ ] Full BLER sweep to 1e-4 (GPU)
+- [x] Full BLER sweep to 1e-4 (L4): 0.12 dB from the notebook
 - [ ] JAX-trained model within 0.5 dB of reference at BLER 1e-4 (GPU/TPU)
 - [ ] XLA vs TensorRT on the same GPU; TPU latency
 

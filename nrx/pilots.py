@@ -6,6 +6,8 @@ pilots can't be regenerated on a CPU-only host, and they're not stored in the st
 
 `recover` estimates them from the weights: y = h * x + n is linear in the pilots, so we
 maximize the NRX's BMD rate over the pilot values with gradients, then snap to QPSK.
+This reproduces all 232 CUDA seed-42 pilots exactly. The optional greedy polish overfits its
+32-block evaluation batch and flipped 20 correct pilots, so it is off by default.
 
     uv run python -m nrx.pilots recover                 # -> assets/pilots_recovered.npy (~2 min CPU)
     uv run python -m nrx.pilots cuda                    # exact pilots, CUDA host only
@@ -50,7 +52,7 @@ def pilot_positions(resource_grid) -> np.ndarray:
     return pos[order].numpy().astype(np.int32)
 
 
-def recover(steps=300, batch_size=32, ebno_db=4.0, seed=0) -> np.ndarray:
+def recover(steps=300, batch_size=32, ebno_db=4.0, seed=0, polish=False) -> np.ndarray:
     import sionna.phy
     from sionna.phy.ofdm import ResourceGridMapper
 
@@ -107,7 +109,7 @@ def recover(steps=300, batch_size=32, ebno_db=4.0, seed=0) -> np.ndarray:
     print(f"snapped to QPSK: rate {float(score(jnp.asarray(p))):.4f} on a fresh batch")
 
     # Greedy polish: try every QPSK value at every pilot.
-    for sweep in range(2):
+    for sweep in range(2 if polish else 0):
         changed = 0
         best = float(score(jnp.asarray(p)))
         for k in range(n_p):

@@ -8,8 +8,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 WEIGHTS_PATH = ROOT / "weights/reference/neural_receiver_weights"
 WEIGHTS_SHA256 = "efa5c7adfec68ab31921adcbc5bb3e2ccd295ae219c2f98841e325ca4bb7bc9a"
 WEIGHTS_GDRIVE_ID = "1wjBB3U8Cp4a6VMZSrLBYJl6aG5sPoG_I"
-# Pilots the reference weights were trained with (see nrx/pilots.py). NRX_PILOTS overrides.
-PILOTS_PATH = pathlib.Path(os.environ.get("NRX_PILOTS", ROOT / "assets/pilots_recovered.npy"))
+# Pilots the reference weights were trained with: regenerated from the CUDA RNG (seed 42) on a Colab L4.
+# assets/pilots_recovered.npy, recovered from the weights alone, is identical. NRX_PILOTS overrides.
+PILOTS_PATH = pathlib.Path(os.environ.get("NRX_PILOTS", ROOT / "assets/pilots_cuda_seed42.npy"))
 
 
 @dataclass(frozen=True)
