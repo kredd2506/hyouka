@@ -23,7 +23,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from nrx.model import NeuralReceiver, make_inputs  # noqa: E402
 
 FIXTURES = pathlib.Path("data/fixtures")
-WEIGHTS = pathlib.Path("weights/reference/neural_receiver_weights")
+from nrx.config import WEIGHTS_PATH as WEIGHTS  # noqa: E402
 PARAMS_NPZ = FIXTURES / "params.npz"
 RESULTS = pathlib.Path("results")
 SLOT_BUDGET_MS = 0.5

@@ -4,7 +4,8 @@ import torch
 from sionna.phy.ofdm import ResourceGridMapper
 
 from nrx.data import make_resource_grid
-from nrx.pilots import PILOTS_PATH, QPSK, load_pilots, pilot_positions
+from nrx.config import PILOTS_PATH
+from nrx.pilots import QPSK, load_pilots, pilot_positions
 
 
 def test_pilot_positions_reconstruct_mapper_output():

@@ -4,6 +4,8 @@ import jax.numpy as jnp
 import numpy as np
 import torch
 
+from nrx.config import WEIGHTS_PATH
+
 
 def torch_to_flax(state_dict: dict[str, torch.Tensor]) -> dict:
     params: dict = {}
@@ -26,5 +28,5 @@ def torch_to_flax(state_dict: dict[str, torch.Tensor]) -> dict:
     return {"params": params}
 
 
-def load_reference(path: str = "weights/reference/neural_receiver_weights") -> dict:
+def load_reference(path=WEIGHTS_PATH) -> dict:
     return torch_to_flax(torch.load(path, weights_only=True, map_location="cpu"))

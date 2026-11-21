@@ -7,9 +7,12 @@ pilots can't be regenerated on a CPU-only host, and they're not stored in the st
 `recover` estimates them from the weights: y = h * x + n is linear in the pilots, so we
 maximize the NRX's BMD rate over the pilot values with gradients, then snap to QPSK.
 
-    uv run python -m nrx.pilots            # writes weights/reference/pilots.npy
+    uv run python -m nrx.pilots recover                 # -> assets/pilots_recovered.npy (~2 min CPU)
+    uv run python -m nrx.pilots cuda                    # exact pilots, CUDA host only
+    uv run python -m nrx.pilots compare A.npy B.npy
 """
 
+import argparse
 import math
 import pathlib
 
@@ -19,9 +22,8 @@ import numpy as np
 import optax
 import torch
 
-from nrx.config import CONFIG
+from nrx.config import CONFIG, PILOTS_PATH, ROOT
 
-PILOTS_PATH = pathlib.Path("weights/reference/pilots.npy")
 QPSK = np.array([1 + 1j, 1 - 1j, -1 + 1j, -1 - 1j], np.complex64) / np.sqrt(2)
 
 
@@ -122,8 +124,41 @@ def recover(steps=300, batch_size=32, ebno_db=4.0, seed=0) -> np.ndarray:
     return p.reshape(tuple(rg.pilot_pattern.pilots.shape))
 
 
+def cuda_pilots(seed=42) -> np.ndarray:
+    """The pilots the tutorial notebook builds on a CUDA device right after setting the seed."""
+    import sionna.phy
+
+    from nrx.data import make_resource_grid
+
+    assert torch.cuda.is_available(), "exact pilots need the CUDA RNG"
+    assert sionna.phy.config.device.startswith("cuda"), sionna.phy.config.device  # Sionna defaults to cuda:0
+    sionna.phy.config.seed = seed
+    return make_resource_grid(apply_saved_pilots=False).pilot_pattern.pilots.cpu().numpy()
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("recover")
+    r.add_argument("--out", default=str(ROOT / "assets/pilots_recovered.npy"))
+    c = sub.add_parser("cuda")
+    c.add_argument("--seed", type=int, default=42)
+    c.add_argument("--out", default=str(ROOT / "assets/pilots_cuda_seed42.npy"))
+    m = sub.add_parser("compare")
+    m.add_argument("a")
+    m.add_argument("b")
+    args = ap.parse_args()
+
+    if args.cmd == "compare":
+        a, b = np.load(args.a).reshape(-1), np.load(args.b).reshape(-1)
+        diff = np.flatnonzero(np.abs(a - b) > 1e-6)
+        print(f"{len(diff)}/{a.size} pilots differ" + (f" at {diff.tolist()}" if len(diff) else ""))
+        return
+    p = recover() if args.cmd == "recover" else cuda_pilots(args.seed)
+    pathlib.Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    np.save(args.out, p)
+    print(f"saved {args.out}  shape {p.shape}")
+
+
 if __name__ == "__main__":
-    p = recover()
-    PILOTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    np.save(PILOTS_PATH, p)
-    print(f"saved {PILOTS_PATH}  shape {p.shape}")
+    main()

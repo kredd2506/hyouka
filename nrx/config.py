@@ -1,6 +1,15 @@
-"""System parameters, matching Sionna's Neural_Receiver tutorial (Sionna 2.2.0)."""
+"""System parameters, matching Sionna's Neural_Receiver tutorial (Sionna 2.2.0), and file paths."""
 
+import os
+import pathlib
 from dataclasses import dataclass
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+WEIGHTS_PATH = ROOT / "weights/reference/neural_receiver_weights"
+WEIGHTS_SHA256 = "efa5c7adfec68ab31921adcbc5bb3e2ccd295ae219c2f98841e325ca4bb7bc9a"
+WEIGHTS_GDRIVE_ID = "1wjBB3U8Cp4a6VMZSrLBYJl6aG5sPoG_I"
+# Pilots the reference weights were trained with (see nrx/pilots.py). NRX_PILOTS overrides.
+PILOTS_PATH = pathlib.Path(os.environ.get("NRX_PILOTS", ROOT / "assets/pilots_recovered.npy"))
 
 
 @dataclass(frozen=True)

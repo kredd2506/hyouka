@@ -19,7 +19,7 @@ import torch
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from nrx import torch_ref  # noqa: E402
 
-WEIGHTS = "weights/reference/neural_receiver_weights"
+from nrx.config import WEIGHTS_PATH as WEIGHTS  # noqa: E402
 FIXTURES = pathlib.Path("data/fixtures")
 OUT = pathlib.Path("results/onnx")
 BATCH_SIZES = (1, 8, 128)  # static shapes, one engine per batch size

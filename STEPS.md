@@ -19,7 +19,7 @@ Companion to [PLAN.md](PLAN.md). PLAN says *what*; this says *in what order, wit
 | Question | Answer |
 |---|---|
 | Framework | PyTorch (`sionna.phy`). Conv weights are `OIHW` → transpose to `HWIO`. |
-| Pre-trained weights | Google Drive `1wjBB3U8Cp4a6VMZSrLBYJl6aG5sPoG_I`, a `torch.save` state_dict (19.4 MB, sha256 `efa5c7ad…7bc9a`), at `weights/reference/neural_receiver_weights`. Fetch: `uv run gdown 1wjBB3U8Cp4a6VMZSrLBYJl6aG5sPoG_I -O weights/reference/neural_receiver_weights` |
+| Pre-trained weights | Google Drive `1wjBB3U8Cp4a6VMZSrLBYJl6aG5sPoG_I`, a `torch.save` state_dict (19.4 MB, sha256 `efa5c7ad…7bc9a`), at `weights/reference/neural_receiver_weights`. Fetch: `make weights` |
 | LayerNorm | `nn.LayerNorm([128, 14, 128])`, eps 1e-5, scale/offset `[C,14,128]` → transpose to `[14,128,C]` |
 | Receiver I/O | Full 128-subcarrier grid in; LLRs on all REs; `ResourceGridDemapper` keeps 1392 data REs (n = 2784) |
 | Input channel order | `[Re0, Re1, Im0, Im1, log10(N0)]`, not interleaved |
@@ -74,7 +74,7 @@ Sionna's CDL-C generation is the likely bottleneck, not the NRX. Plan for:
 
 ## 6. Evaluate ported model — reduced run ✅, full run on cloud
 - [x] `nrx/evaluate.py`: `sim_ber` sweep for `jax-ported`, `torch-ref`, both baselines, `jax-trained`; same seed per system → same channel draws
-- [x] **Pilots fix**: Sionna 2.x draws Kronecker pilots from the device RNG; the weights were trained on CUDA (seed 42), so CPU pilots don't match and the NRX fails (BER ≈ 0.44). `nrx/pilots.py` recovers them from the weights by gradient ascent on the BMD rate (y is linear in pilots), snaps to QPSK, greedy polish → `weights/reference/pilots.npy`. `make_resource_grid()` applies it.
+- [x] **Pilots fix**: Sionna 2.x draws Kronecker pilots from the device RNG; the weights were trained on CUDA (seed 42), so CPU pilots don't match and the NRX fails (BER ≈ 0.44). `nrx/pilots.py` recovers them from the weights by gradient ascent on the BMD rate (y is linear in pilots), snaps to QPSK, greedy polish → `assets/pilots_recovered.npy` (tracked). `make_resource_grid()` applies it; `NRX_PILOTS=path` overrides.
 - [x] Reduced sweep (`max_mc_iter=40`): `results/ber_bler_ported_reduced.{csv,png}`. jax-ported ≡ torch-ref. vs notebook NRX at BLER 1e-1/1e-2/1e-3: −1.49/−1.05/−0.01 dB vs −1.53/−1.03/+0.14 dB
 - [ ] Full sweep at `max_mc_iter=1000` to resolve 1e-4 (acceptance #2) — cloud
 
@@ -110,12 +110,12 @@ Everything below is scripted; nothing needs writing on the host.
 
 **Setup**
 - [ ] `git clone` + `uv sync --extra cuda` (or `--extra tpu`)
-- [ ] Copy `weights/reference/` (state_dict + `pilots.npy`) — both gitignored
+- [ ] `make weights` (downloads + verifies sha256); recovered pilots are tracked in `assets/`
 - [ ] `uv run pytest -q` passes on the host
 
 **1. Exact pilots (CUDA only)** — the tutorial weights were trained with pilots from the CUDA RNG at seed 42
-- [ ] `python -c "import sionna.phy; sionna.phy.config.seed=42; from nrx.data import make_resource_grid; import numpy as np; np.save('weights/reference/pilots_cuda_seed42.npy', make_resource_grid(apply_saved_pilots=False).pilot_pattern.pilots.cpu().numpy())"`
-- [ ] Compare with recovered `pilots.npy` (count mismatches); if they differ, rerun the sweep with the CUDA ones
+- [ ] `make pilots-cuda` (writes `assets/pilots_cuda_seed42.npy` and prints how many differ from the recovered ones)
+- [ ] If they differ: `NRX_PILOTS=assets/pilots_cuda_seed42.npy make sweep` and compare
 
 **2. Backends (goal 1)**
 - [ ] `python bench/backends.py --make-fixture && python bench/backends.py` on GPU and TPU

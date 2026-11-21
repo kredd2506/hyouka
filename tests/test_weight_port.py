@@ -6,10 +6,11 @@ import pytest
 import torch
 
 from nrx import torch_ref
+from nrx.config import WEIGHTS_PATH
 from nrx.model import NeuralReceiver, make_inputs
 from nrx.port_weights import load_reference
 
-WEIGHTS = pathlib.Path("weights/reference/neural_receiver_weights")
+WEIGHTS = WEIGHTS_PATH
 pytestmark = pytest.mark.skipif(not WEIGHTS.exists(), reason="pre-trained weights not downloaded")
 
 

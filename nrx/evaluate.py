@@ -18,12 +18,12 @@ from sionna.phy.ofdm import LMMSEEqualizer, LSChannelEstimator, RemoveNulledSubc
 from sionna.phy.utils import expand_to_rank, sim_ber
 
 from nrx import torch_ref
-from nrx.config import CONFIG
+from nrx.config import CONFIG, ROOT, WEIGHTS_PATH
 from nrx.data import SionnaLink, data_re_indices, gather_data_llrs, make_stream_management
 from nrx.model import NeuralReceiver, make_inputs
 from nrx.port_weights import load_reference
 
-WEIGHTS = "weights/reference/neural_receiver_weights"
+WEIGHTS = WEIGHTS_PATH
 SYSTEMS = ("baseline-perfect-csi", "baseline-ls-estimation", "torch-ref", "jax-ported", "jax-trained")
 
 
@@ -169,7 +169,7 @@ def main():
                 w.writerow([f"{e:.1f}", system, f"{be:.6e}", f"{bl:.6e}", args.max_mc_iter, args.batch_size])
             f.flush()
 
-    reference = read_curves("results/reference.csv")
+    reference = read_curves(ROOT / "results/reference.csv")
     plot(curves, reference, out.with_suffix(".png"))
     print(f"\n{'system':24} " + " ".join(f"{'@' + t:>10}" for t in ("1e-1", "1e-2", "1e-3", "1e-4")))
     for name, (x, y) in {**{f"{k} (nb)": v for k, v in reference.items()}, **curves}.items():
