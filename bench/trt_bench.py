@@ -3,18 +3,25 @@
 Same fixtures, same batch sizes, same wall-clock method (launch + synchronize), so the two are comparable.
 pip wheels of TensorRT don't ship trtexec, hence the Python API.
 
-    uv pip install tensorrt-cu13   # or tensorrt-cu12, matching torch's CUDA
-    uv run --no-sync python bench/trt_bench.py
+Precisions: fp32 (TF32 off: true fp32), tf32 (TensorRT's default on Ampere+), fp16.
+
+    make trt-install                # libs + bindings wheels from pypi.nvidia.com
+    uv run --no-sync python bench/trt_bench.py [--precisions fp32 tf32 fp16]
 """
 
+import argparse
 import json
 import pathlib
 import statistics
 import time
 
 import numpy as np
-import tensorrt as trt
 import torch
+
+try:
+    import tensorrt as trt
+except ImportError:  # the `tensorrt` wrapper is an sdist; the bindings wheel works on its own with tensorrt_libs
+    import tensorrt_bindings as trt
 
 ONNX_DIR = pathlib.Path("results/onnx")
 FIXTURES = pathlib.Path("data/fixtures")
@@ -24,7 +31,7 @@ SLOT_BUDGET_MS = 0.5
 LOGGER = trt.Logger(trt.Logger.WARNING)
 
 
-def build_engine(onnx_path, fp16):
+def build_engine(onnx_path, precision):
     builder = trt.Builder(LOGGER)
     network = builder.create_network(0)
     parser = trt.OnnxParser(network, LOGGER)
@@ -32,9 +39,18 @@ def build_engine(onnx_path, fp16):
         raise RuntimeError("\n".join(str(parser.get_error(i)) for i in range(parser.num_errors)))
     config = builder.create_builder_config()
     config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 2 << 30)
-    if fp16:
+    has_tf32 = hasattr(trt.BuilderFlag, "TF32")
+    if precision == "fp32":
+        if not has_tf32:
+            raise NotImplementedError("no TF32 builder flag, can't tell whether TF32 is on")
+        config.clear_flag(trt.BuilderFlag.TF32)
+    elif precision == "tf32":
+        if not has_tf32:
+            raise NotImplementedError("no TF32 builder flag")
+        config.set_flag(trt.BuilderFlag.TF32)
+    elif precision == "fp16":
         if not hasattr(trt.BuilderFlag, "FP16"):
-            raise NotImplementedError("this TensorRT has no FP16 builder flag (strongly-typed only)")
+            raise NotImplementedError("no FP16 builder flag (strongly-typed only)")
         config.set_flag(trt.BuilderFlag.FP16)
     t0 = time.perf_counter()
     plan = builder.build_serialized_network(network, config)
@@ -73,15 +89,19 @@ def time_calls(fn, iters):
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--precisions", nargs="+", default=["fp32", "tf32", "fp16"], choices=["fp32", "tf32", "fp16"])
+    args = ap.parse_args()
     device = torch.cuda.get_device_name()
+    print(f"TensorRT {trt.__version__} ({trt.__name__}), {device}")
     rows = []
-    for precision in ("fp32", "fp16"):
+    for precision in args.precisions:
         for b in BATCH_SIZES:
             fx = np.load(FIXTURES / f"batch_{b}.npz")
             feeds = {"y_re": fx["y"].real.astype(np.float32), "y_im": fx["y"].imag.astype(np.float32),
                      "no": fx["no"].astype(np.float32)}
             try:
-                engine, build_s = build_engine(ONNX_DIR / f"nrx_b{b}.onnx", precision == "fp16")
+                engine, build_s = build_engine(ONNX_DIR / f"nrx_b{b}.onnx", precision)
             except NotImplementedError as e:
                 print(f"{precision} B={b}: skipped ({e})")
                 continue

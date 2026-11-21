@@ -1,8 +1,8 @@
 """Walk the compiler stack for the NRX on the current backend and estimate where time goes.
 
-jaxpr -> StableHLO -> optimized HLO (kernels, fusion kinds) -> memory -> per-op microbenchmarks.
+jaxpr -> StableHLO -> optimized HLO (kernels, fusion kinds) -> memory -> time breakdown by ablation.
 
-    uv run python bench/inspect_compiler.py [--batch 1] [--dump-passes]
+    uv run python bench/inspect_compiler.py [--batch 1] [--dump-passes] [--precision highest]
 """
 
 import argparse
@@ -35,6 +35,30 @@ def bench(fn, *args, iters=200):
     return float(np.median(ts) * 1e3)
 
 
+def ablated_forward(params, y, no, layer_norm=True, res_convs=True):
+    """The NRX written out functionally, with LayerNorms and/or the 8 residual convs replaceable by identity.
+    Timing variants of the *whole* compiled graph avoids the per-call dispatch cost that dominates
+    isolated-op timings on GPU."""
+    p = params["params"]
+
+    def conv(x, c):
+        return jax.lax.conv_general_dilated(x, c["kernel"], (1, 1), "SAME",
+                                            dimension_numbers=("NHWC", "HWIO", "NHWC")) + c["bias"]
+
+    def norm(x, ln):
+        return GridLayerNorm().apply({"params": ln}, x) if layer_norm else x
+
+    z = conv(make_inputs(y, no), p["input_conv"])
+    for i in range(1, 5):
+        r = p[f"res_block_{i}"]
+        h = jax.nn.relu(norm(z, r["layer_norm_1"]))
+        h = conv(h, r["conv_1"]) if res_convs else h
+        h = jax.nn.relu(norm(h, r["layer_norm_2"]))
+        h = conv(h, r["conv_2"]) if res_convs else h
+        z = h + z
+    return conv(z, p["output_conv"])
+
+
 def entry_kernels(hlo: str):
     entry = hlo[hlo.index("\nENTRY"):]
     kernels = []
@@ -51,7 +75,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--batch", type=int, default=1)
     ap.add_argument("--dump-passes", action="store_true")
+    ap.add_argument("--precision", default="default", choices=["default", "high", "highest"])
     args = ap.parse_args()
+    jax.config.update("jax_default_matmul_precision", None if args.precision == "default" else args.precision)
     B = args.batch
     backend = jax.default_backend()
     out_lines = []
@@ -66,7 +92,8 @@ def main():
     no = jnp.full((B,), 0.5, jnp.float32)
     forward = lambda p, y, no: NeuralReceiver().apply(p, make_inputs(y, no))  # noqa: E731
 
-    say(f"# Compiler walk — backend={backend}, jax {jax.__version__}, B={B}\n")
+    say(f"# Compiler walk — backend={backend} ({jax.devices()[0].device_kind}), jax {jax.__version__}, "
+        f"B={B}, precision={args.precision}\n")
 
     jaxpr = jax.make_jaxpr(forward)(params, y, no)
     prims = collections.Counter(e.primitive.name for e in jaxpr.jaxpr.eqns)
@@ -96,29 +123,27 @@ def main():
             f"output {mem.output_size_in_bytes / 1e6:.2f} MB, temp {mem.temp_size_in_bytes / 1e6:.1f} MB")
         say(f"  one activation [B,14,128,128] f32 = {B * T * F * C * 4 / 1e6:.2f} MB")
 
-    say("\n## 5. Where the time goes (isolated microbenchmarks, median ms)")
-    x = jnp.asarray(rng.normal(size=(B, T, F, C)).astype(np.float32))
-    k = params["params"]["res_block_1"]["conv_1"]
-    ln = params["params"]["res_block_1"]["layer_norm_1"]
-    conv = jax.jit(lambda x, w: jax.lax.conv_general_dilated(x, w, (1, 1), "SAME",
-                                                            dimension_numbers=("NHWC", "HWIO", "NHWC")))
-    conv_bias = jax.jit(lambda x, w, b: conv(x, w) + b)
-    lnorm = jax.jit(lambda x: GridLayerNorm().apply({"params": ln}, x))
-    ln_relu = jax.jit(lambda x: jax.nn.relu(GridLayerNorm().apply({"params": ln}, x)))
-    full = jax.jit(forward)
-    t_conv = bench(conv, x, k["kernel"])
-    t_conv_b = bench(conv_bias, x, k["kernel"], k["bias"])
-    t_ln = bench(lnorm, x)
-    t_ln_r = bench(ln_relu, x)
-    t_full = bench(full, params, y, no)
-    est = 8 * t_conv_b + 8 * t_ln_r
-    say(f"  conv 128→128 3×3         {t_conv:8.3f}")
-    say(f"  conv + bias              {t_conv_b:8.3f}   (bias add costs {t_conv_b - t_conv:+.3f})")
-    say(f"  LayerNorm                {t_ln:8.3f}")
-    say(f"  LayerNorm + ReLU         {t_ln_r:8.3f}")
-    say(f"  full NRX                 {t_full:8.3f}")
-    say(f"  8×(conv+bias) = {8 * t_conv_b:.3f} ({8 * t_conv_b / t_full:.0%}),  "
-        f"8×(LN+ReLU) = {8 * t_ln_r:.3f} ({8 * t_ln_r / t_full:.0%}),  sum {est:.3f} vs full {t_full:.3f}")
+    say("\n## 5. Where the time goes (ablation inside the full compiled graph, median ms)")
+    variants = {
+        "full NRX": dict(),
+        "without LayerNorm": dict(layer_norm=False),
+        "without the 8 residual convs": dict(res_convs=False),
+        "without both (in/out conv + glue)": dict(layer_norm=False, res_convs=False),
+    }
+    ref = np.asarray(jax.jit(forward)(params, y, no))
+    chk = np.asarray(jax.jit(ablated_forward)(params, y, no))
+    assert np.allclose(chk, ref, atol=1e-2 * max(1.0, np.abs(ref).max())), "ablated_forward drifted from the model"
+    t = {name: bench(jax.jit(lambda p, y, no, kw=kw: ablated_forward(p, y, no, **kw)), params, y, no)
+         for name, kw in variants.items()}
+    floor = bench(jax.jit(lambda x: x + 1), jnp.zeros((1,), jnp.float32), iters=500)
+    full = t["full NRX"]
+    for name, ms in t.items():
+        say(f"  {name:36} {ms:8.3f}")
+    say(f"  {'dispatch floor (jit x+1)':36} {floor:8.3f}")
+    say(f"  ⇒ 8 residual convs ≈ {full - t['without the 8 residual convs']:.3f} ms "
+        f"({(full - t['without the 8 residual convs']) / full:.0%}), "
+        f"8 LayerNorms ≈ {full - t['without LayerNorm']:.3f} ms ({(full - t['without LayerNorm']) / full:.0%}), "
+        f"dispatch ≈ {floor / full:.0%} of a call")
 
     if args.dump_passes:
         dump = pathlib.Path("data/xla_dump") / backend
@@ -140,7 +165,8 @@ def main():
         say("  first 8: " + " → ".join(names[:8]))
         say("  last 8:  " + " → ".join(names[-8:]))
 
-    out = pathlib.Path("results") / f"compiler_{backend}_b{B}.md"
+    suffix = "" if args.precision == "default" else f"_{args.precision}"
+    out = pathlib.Path("results") / f"compiler_{backend}_b{B}{suffix}.md"
     out.write_text("\n".join(out_lines) + "\n")
     print(f"\nwritten {out}")
 

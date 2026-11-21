@@ -1,4 +1,4 @@
-# Compiler walk — backend=cpu, jax 0.12.1, B=128
+# Compiler walk — backend=cpu (cpu), jax 0.12.1, B=128, precision=default
 
 ## 1. jaxpr: 186 equations
   broadcast_in_dim×34, add×30, mul×17, reduce_sum×16, div×16, sub×16, conv_general_dilated×10, reshape×10, square×8, sqrt×8, integer_pow×8, custom_jvp_call×8, transpose×1, log×1, real×1, imag×1, concatenate×1
@@ -29,10 +29,10 @@
 ## 4. Memory: args 23.1 MB, output 1.84 MB, temp 352.3 MB
   one activation [B,14,128,128] f32 = 117.44 MB
 
-## 5. Where the time goes (isolated microbenchmarks, median ms)
-  conv 128→128 3×3           17.131
-  conv + bias                18.280   (bias add costs +1.149)
-  LayerNorm                   4.402
-  LayerNorm + ReLU            4.374
-  full NRX                  201.135
-  8×(conv+bias) = 146.240 (73%),  8×(LN+ReLU) = 34.993 (17%),  sum 181.233 vs full 201.135
+## 5. Where the time goes (ablation inside the full compiled graph, median ms)
+  full NRX                              199.916
+  without LayerNorm                     165.575
+  without the 8 residual convs           49.539
+  without both (in/out conv + glue)      13.078
+  dispatch floor (jit x+1)                0.003
+  ⇒ 8 residual convs ≈ 150.376 ms (75%), 8 LayerNorms ≈ 34.341 ms (17%), dispatch ≈ 0% of a call

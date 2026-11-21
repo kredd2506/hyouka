@@ -37,11 +37,11 @@ Fill in as you go. Times are wall clock.
 | 7 | `make train` | L4 | | | **5k of 30k steps**: rate 0.76, 159 ms/step, Sionna wait 0.02 ms, traces = 1 |
 | 8 | `make eval-trained` | L4 | | | 5k-step model @1e-2 = 1.51 dB (ref −1.03): undertrained |
 
-### Next session
-- [ ] TensorRT: install without `-q`, verify `import tensorrt`, then `make trt`
-- [ ] Precision: XLA with `jax_default_matmul_precision=highest` vs TF32; TensorRT with TF32 on/off
-- [ ] GPU time breakdown by ablation inside the full graph (isolated ops are dominated by dispatch)
-- [ ] Train the full 30k steps (~80 min on L4 at 159 ms/step); `make eval-trained`
+### Next session (notebook defaults are set for this)
+- [ ] TensorRT: `make trt-install` (libs + bindings wheels from pypi.nvidia.com; the PyPI `tensorrt` sdist failed), `make trt`
+- [ ] Precision: `make backends PRECISION=highest` (true fp32) next to default (TF32); TRT fp32 / tf32 / fp16
+- [ ] GPU time breakdown: `make compiler` now ablates inside the full graph (isolated ops were dominated by dispatch)
+- [ ] Training: resumes the 5k checkpoint on Drive to 30k (~70 min on L4); `make eval-trained`
 
 ## Bring back
 - [ ] `results/` (latency jsonl, compiler md, sweeps csv/png, host info)

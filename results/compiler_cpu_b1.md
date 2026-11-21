@@ -1,4 +1,4 @@
-# Compiler walk — backend=cpu, jax 0.12.1, B=1
+# Compiler walk — backend=cpu (cpu), jax 0.12.1, B=1, precision=default
 
 ## 1. jaxpr: 186 equations
   broadcast_in_dim×34, add×30, mul×17, reduce_sum×16, div×16, sub×16, conv_general_dilated×10, reshape×10, square×8, sqrt×8, integer_pow×8, custom_jvp_call×8, transpose×1, log×1, real×1, imag×1, concatenate×1
@@ -29,16 +29,10 @@
 ## 4. Memory: args 19.5 MB, output 0.01 MB, temp 2.8 MB
   one activation [B,14,128,128] f32 = 0.92 MB
 
-## 5. Where the time goes (isolated microbenchmarks, median ms)
-  conv 128→128 3×3            0.271
-  conv + bias                 0.281   (bias add costs +0.010)
-  LayerNorm                   0.079
-  LayerNorm + ReLU            0.080
-  full NRX                    3.013
-  8×(conv+bias) = 2.251 (75%),  8×(LN+ReLU) = 0.637 (21%),  sum 2.888 vs full 3.013
-
-## 6. Pass dump: 202 pass runs, 35 distinct passes, 14 pipelines, in data/xla_dump/cpu/
-  pipelines: async-collective → pre-spmd-partitioner → sharding-removal → SubbytePacker_pipeline → HLO_passes_through_layout_assignment → simplification → embedded_scatter_expansion → post_scatter_expansion_simplification → hlo_normalization → dot-library-passes → HLO_passes_after_layout_assignment → after_layout_assignment → simplification_after_layout_assignment → HLO_passes_after_scheduling
-  most frequent: algsimp×37, sub-byte-size-setter×22, pipeline-end×12, async-collective-custom-call-rewriter×11, strip-memory-placement-annotations×11, flatten-call-graph×11, batched_gather_scatter_normalizer×11, scatter_expander×11
-  first 8: async-collective-custom-call-rewriter → strip-memory-placement-annotations → flatten-call-graph → sub-byte-size-setter → batched_gather_scatter_normalizer → algsimp → scatter_expander → algsimp
-  last 8:  after_layout_assignment → pipeline-end → fusion-wrapper → cpu-all-reduce-combiner → algsimp → dce → small-while-loop-hoisting → apply-xla-transforms-21
+## 5. Where the time goes (ablation inside the full compiled graph, median ms)
+  full NRX                                3.029
+  without LayerNorm                       2.483
+  without the 8 residual convs            0.812
+  without both (in/out conv + glue)       0.283
+  dispatch floor (jit x+1)                0.003
+  ⇒ 8 residual convs ≈ 2.217 ms (73%), 8 LayerNorms ≈ 0.546 ms (18%), dispatch ≈ 0% of a call

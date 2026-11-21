@@ -5,6 +5,7 @@ Parity is checked against torch LLRs stored in a fixture made once with --make-f
 
     uv run python bench/backends.py --make-fixture   # needs torch + sionna + weights
     uv run python bench/backends.py                  # any backend
+    uv run python bench/backends.py --precision highest   # true fp32 convs (GPU default allows TF32)
 """
 
 import argparse
@@ -90,7 +91,8 @@ def time_calls(fn, args, iters):
     return statistics.median(times), times[int(0.99 * (len(times) - 1))]
 
 
-def run(warmup, dump_hlo, real_input):
+def run(warmup, dump_hlo, real_input, precision):
+    jax.config.update("jax_default_matmul_precision", None if precision == "default" else precision)
     backend = jax.default_backend()
     device = jax.devices()[0]
     params = jax.device_put(load_params(), device)
@@ -133,13 +135,13 @@ def run(warmup, dump_hlo, real_input):
         hlo = compiled.as_text() or ""  # some PJRT plugins expose no HLO text
         n_fusions = hlo.count(" fusion(") + hlo.count("= fusion")
         if dump_hlo:
-            out = RESULTS / "hlo" / backend
+            out = RESULTS / "hlo" / (backend if precision == "default" else f"{backend}_{precision}")
             out.mkdir(parents=True, exist_ok=True)
             (out / f"b{b}_stablehlo.mlir").write_text(lowered.as_text())
             (out / f"b{b}_optimized_hlo.txt").write_text(hlo)
 
         row = dict(backend=backend, device=str(device.device_kind), jax=jax.__version__,
-                   host=platform.machine(), input="real" if real_input else "complex", batch=b, lower_s=round(t_lower, 3),
+                   host=platform.machine(), input="real" if real_input else "complex", precision=precision, batch=b, lower_s=round(t_lower, 3),
                    compile_s=round(t_compile, 3), first_call_ms=round(t_first, 3),
                    p50_ms=round(p50, 3), p99_ms=round(p99, 3), iters=iters,
                    per_user_ms=round(p50 / b, 4), gflops=round(flops / 1e9, 2),
@@ -156,7 +158,8 @@ def run(warmup, dump_hlo, real_input):
     print(f"\nslot budget {SLOT_BUDGET_MS} ms @ 30 kHz SCS, judged on p99 batch latency")
     for r in rows:
         ok = "meets" if r["p99_ms"] <= SLOT_BUDGET_MS else "misses"
-        print(f"  {r['backend']:>6} B={r['batch']:<4} p99 {r['p99_ms']:>9.3f} ms  ({ok})")
+        print(f"  {r['backend']:>6} {precision:>7} B={r['batch']:<4} p99 {r['p99_ms']:>9.3f} ms  "
+              f"max|dLLR| {r['max_abs_llr_err']:.1e}  ({ok})")
 
 
 if __name__ == "__main__":
@@ -165,5 +168,7 @@ if __name__ == "__main__":
     ap.add_argument("--warmup", type=int, default=5)
     ap.add_argument("--no-dump-hlo", action="store_true")
     ap.add_argument("--real-input", action="store_true", help="split complex y on the host")
+    ap.add_argument("--precision", default="default", choices=["default", "high", "highest"],
+                    help="jax_default_matmul_precision for convs; default allows TF32 on Ampere+ GPUs")
     args = ap.parse_args()
-    make_fixture() if args.make_fixture else run(args.warmup, not args.no_dump_hlo, args.real_input)
+    make_fixture() if args.make_fixture else run(args.warmup, not args.no_dump_hlo, args.real_input, args.precision)

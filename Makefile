@@ -7,11 +7,16 @@ UV_RUN := uv run
 export XLA_PYTHON_CLIENT_PREALLOCATE ?= false
 
 MC_ITER_REDUCED ?= 40
+# jax_default_matmul_precision: default (TF32 on Ampere+ GPUs) | highest (true fp32)
+PRECISION ?= default
+# TensorRT wheels: cu13 (driver >= 580) or cu12
+TRT_CUDA ?= cu13
+TRT_VERSION ?= 11.5.0.63
 STEPS ?= 30000
 RUN ?= checkpoints/run1
 
 .PHONY: help host-info setup weights test fixtures backends compiler onnx sweep-reduced sweep train eval-trained \
-        pilots-recover pilots-cuda trt all-local all-cloud clean
+        pilots-recover pilots-cuda trt-install trt all-local all-cloud clean
 
 help:  ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -34,12 +39,12 @@ test: weights  ## Unit + parity tests (~5 s)
 fixtures: weights  ## Fixed input batches + torch LLRs for the benchmarks
 	$(UV_RUN) python bench/backends.py --make-fixture
 
-backends: fixtures  ## Latency + parity on the current XLA backend -> results/backend_latency.jsonl
-	$(UV_RUN) python bench/backends.py
+backends: fixtures  ## Latency + parity on the current XLA backend (PRECISION=highest for true fp32)
+	$(UV_RUN) python bench/backends.py --precision $(PRECISION)
 
 compiler: weights  ## jaxpr/StableHLO/HLO walk + per-op timing -> results/compiler_<backend>_b*.md
-	$(UV_RUN) python bench/inspect_compiler.py --batch 1 --dump-passes
-	$(UV_RUN) python bench/inspect_compiler.py --batch 128
+	$(UV_RUN) python bench/inspect_compiler.py --batch 1 --dump-passes --precision $(PRECISION)
+	$(UV_RUN) python bench/inspect_compiler.py --batch 128 --precision $(PRECISION)
 
 onnx: fixtures  ## Export torch NRX to ONNX for TensorRT -> results/onnx/
 	$(UV_RUN) python bench/export_onnx.py
@@ -72,5 +77,10 @@ all-cloud: test pilots-cuda backends compiler onnx sweep train eval-trained  ## 
 clean:  ## Remove generated data (keeps weights, results, checkpoints)
 	rm -rf data/ .pytest_cache
 
-trt: onnx  ## TensorRT fp32/fp16 engines timed like `backends` (needs: uv pip install tensorrt-cu13|cu12)
+trt-install:  ## TensorRT libs + bindings wheels from pypi.nvidia.com (TRT_CUDA=cu12 on old drivers)
+	uv pip install --extra-index-url https://pypi.nvidia.com \
+		tensorrt-$(TRT_CUDA)-libs==$(TRT_VERSION) tensorrt-$(TRT_CUDA)-bindings==$(TRT_VERSION)
+	$(UV_RUN) python -c "import tensorrt_bindings as t; print('TensorRT', t.__version__)"
+
+trt: onnx  ## TensorRT fp32 (TF32 off) / tf32 / fp16, timed like `backends` (run trt-install first)
 	$(UV_RUN) python bench/trt_bench.py
