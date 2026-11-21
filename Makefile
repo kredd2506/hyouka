@@ -10,11 +10,17 @@ MC_ITER_REDUCED ?= 40
 STEPS ?= 30000
 RUN ?= checkpoints/run1
 
-.PHONY: help setup weights test fixtures backends compiler onnx sweep-reduced sweep train eval-trained \
+.PHONY: help host-info setup weights test fixtures backends compiler onnx sweep-reduced sweep train eval-trained \
         pilots-recover pilots-cuda all-local all-cloud clean
 
 help:  ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
+
+host-info:  ## Record hardware + versions -> results/host_<hostname>.txt
+	@mkdir -p results
+	@{ date -u; uname -a; nvidia-smi 2>/dev/null || true; \
+	  $(UV_RUN) python -c "import jax, torch, sionna, flax; print('jax', jax.__version__, jax.devices()); print('torch', torch.__version__, 'cuda', torch.version.cuda, torch.cuda.is_available()); print('flax', flax.__version__)"; \
+	} 2>&1 | grep -v jitc | tee results/host_$$(hostname -s).txt
 
 setup:  ## Create the venv (EXTRA=cuda|tpu for accelerators)
 	uv sync $(if $(EXTRA),--extra $(EXTRA),)
