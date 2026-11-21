@@ -70,12 +70,12 @@ automatically. `make pilots-cuda` regenerates the exact ones on a CUDA host and 
 - macOS (arm64) or Linux x86-64; ~3 GB disk for the venv
 - Optional: an NVIDIA GPU (CUDA 13 driver) or a Cloud TPU VM, for training, full sweeps, and real latency numbers
 
-### Laptop (CPU), about 10 minutes
+### Laptop (CPU), about 2 minutes
 ```bash
 git clone https://github.com/kredd2506/hyouka.git && cd hyouka
 make setup          # uv sync: exact pinned versions from uv.lock
 make test           # downloads + checksums the weights, runs 11 tests (~5 s)
-make all-local      # backends + compiler walk + ONNX export
+make all-local      # backends + compiler walk + ONNX export (~80 s)
 ```
 Run `make help` for every target. Each one is a single `uv run python …` command, so you can also run them by hand.
 
