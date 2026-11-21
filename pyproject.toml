@@ -21,7 +21,13 @@ cuda = ["jax[cuda13]==0.12.1"]
 tpu = ["jax[tpu]==0.12.1"]
 
 [dependency-groups]
-dev = ["pytest", "gdown"]
+dev = [
+    "pytest",
+    "gdown",
+    "onnx>=1.23.2",
+    "onnxscript>=0.7.2",
+    "onnxruntime>=1.32.0",
+]
 
 [tool.uv]
 conflicts = [[{ extra = "cuda" }, { extra = "tpu" }]]

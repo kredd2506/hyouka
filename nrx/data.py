@@ -13,10 +13,13 @@ from sionna.phy.ofdm import ResourceGrid, ResourceGridDemapper, ResourceGridMapp
 from sionna.phy.utils import ebnodb2no, expand_to_rank
 
 from nrx.config import CONFIG, Config
+from nrx.pilots import load_pilots
 
 
-def make_resource_grid(cfg: Config = CONFIG) -> ResourceGrid:
-    return ResourceGrid(num_ofdm_symbols=cfg.num_ofdm_symbols,
+def make_resource_grid(cfg: Config = CONFIG, apply_saved_pilots: bool = True) -> ResourceGrid:
+    """Resource grid of the tutorial. Pilots are random per construction in Sionna 2.x, so the
+    pilots the reference weights were trained with are loaded from disk when available."""
+    rg = ResourceGrid(num_ofdm_symbols=cfg.num_ofdm_symbols,
                         fft_size=cfg.fft_size,
                         subcarrier_spacing=cfg.subcarrier_spacing,
                         num_tx=1,
@@ -26,6 +29,10 @@ def make_resource_grid(cfg: Config = CONFIG) -> ResourceGrid:
                         pilot_pattern=cfg.pilot_pattern,
                         pilot_ofdm_symbol_indices=list(cfg.pilot_ofdm_symbol_indices),
                         num_guard_carriers=list(cfg.num_guard_carriers))
+    pilots = load_pilots() if apply_saved_pilots else None
+    if pilots is not None:
+        rg.pilot_pattern.pilots = torch.as_tensor(pilots, device=rg.pilot_pattern.pilots.device)
+    return rg
 
 
 def make_stream_management() -> StreamManagement:
@@ -57,10 +64,10 @@ class SionnaLink:
       b:  [B, k] float32                    info bits (only when coded=True)
     """
 
-    def __init__(self, cfg: Config = CONFIG, coded: bool = False):
+    def __init__(self, cfg: Config = CONFIG, coded: bool = False, apply_saved_pilots: bool = True):
         self.cfg = cfg
         self.coded = coded
-        self.resource_grid = make_resource_grid(cfg)
+        self.resource_grid = make_resource_grid(cfg, apply_saved_pilots)
         assert self.resource_grid.num_data_symbols == cfg.num_data_symbols
         self._binary_source = BinarySource()
         self.encoder = LDPC5GEncoder(cfg.k, cfg.n) if coded else None

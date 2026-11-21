@@ -1,0 +1,52 @@
+ebno_db,system,ber,bler,bit_errors,num_bits,block_errors,num_blocks,status
+-5.0,baseline-perfect-csi,0.25158,1.0,44826,178176,128,128,reached target block errors
+-4.5,baseline-perfect-csi,0.23871,1.0,42533,178176,128,128,reached target block errors
+-4.0,baseline-perfect-csi,0.21688,1.0,38642,178176,128,128,reached target block errors
+-3.5,baseline-perfect-csi,0.19459,1.0,34672,178176,128,128,reached target block errors
+-3.0,baseline-perfect-csi,0.16891,1.0,30095,178176,128,128,reached target block errors
+-2.5,baseline-perfect-csi,0.11126,1.0,19824,178176,128,128,reached target block errors
+-2.0,baseline-perfect-csi,0.019977,0.54688,7119,356352,140,256,reached target block errors
+-1.5,baseline-perfect-csi,0.0010018,0.030649,4641,4632576,102,3328,reached target block errors
+-1.0,baseline-perfect-csi,0.00012118,0.0018254,9241,76259328,100,54784,reached target block errors
+-0.5,baseline-perfect-csi,6.3572e-05,0.00064844,11327,178176000,83,128000,reached max iterations
+0.0,baseline-perfect-csi,1.3026e-05,0.00014062,2321,178176000,18,128000,reached max iterations
+0.5,baseline-perfect-csi,1.1831e-05,0.000125,2108,178176000,16,128000,reached max iterations
+1.0,baseline-perfect-csi,1.5883e-06,1.5625e-05,283,178176000,2,128000,reached max iterations
+-5.0,baseline-ls-estimation,0.39096,1.0,69659,178176,128,128,reached target block errors
+-4.5,baseline-ls-estimation,0.38014,1.0,67731,178176,128,128,reached target block errors
+-4.0,baseline-ls-estimation,0.36607,1.0,65224,178176,128,128,reached target block errors
+-3.5,baseline-ls-estimation,0.35618,1.0,63462,178176,128,128,reached target block errors
+-3.0,baseline-ls-estimation,0.34295,1.0,61106,178176,128,128,reached target block errors
+-2.5,baseline-ls-estimation,0.32853,1.0,58536,178176,128,128,reached target block errors
+-2.0,baseline-ls-estimation,0.30968,1.0,55177,178176,128,128,reached target block errors
+-1.5,baseline-ls-estimation,0.29223,1.0,52068,178176,128,128,reached target block errors
+-1.0,baseline-ls-estimation,0.2759,1.0,49159,178176,128,128,reached target block errors
+-0.5,baseline-ls-estimation,0.25841,1.0,46043,178176,128,128,reached target block errors
+0.0,baseline-ls-estimation,0.23001,1.0,40982,178176,128,128,reached target block errors
+0.5,baseline-ls-estimation,0.20609,1.0,36720,178176,128,128,reached target block errors
+1.0,baseline-ls-estimation,0.16472,1.0,29349,178176,128,128,reached target block errors
+1.5,baseline-ls-estimation,0.083406,0.88281,14861,178176,113,128,reached target block errors
+2.0,baseline-ls-estimation,0.009036,0.25195,6440,712704,129,512,reached target block errors
+2.5,baseline-ls-estimation,0.00068957,0.013506,7249,10512384,102,7552,reached target block errors
+3.0,baseline-ls-estimation,0.0002273,0.0021098,15147,66637824,101,47872,reached target block errors
+3.5,baseline-ls-estimation,9.6966e-05,0.00075781,17277,178176000,97,128000,reached max iterations
+4.0,baseline-ls-estimation,5.0691e-05,0.00041406,9032,178176000,53,128000,reached max iterations
+4.5,baseline-ls-estimation,2.7989e-05,0.00021094,4987,178176000,27,128000,reached max iterations
+5.0,baseline-ls-estimation,1.668e-05,0.00011719,2972,178176000,15,128000,reached max iterations
+5.5,baseline-ls-estimation,2.1215e-06,2.3438e-05,378,178176000,3,128000,reached max iterations
+-5.0,neural-receiver,0.26018,1.0,46357,178176,128,128,reached target block errors
+-4.5,neural-receiver,0.24098,1.0,42937,178176,128,128,reached target block errors
+-4.0,neural-receiver,0.22396,1.0,39904,178176,128,128,reached target block errors
+-3.5,neural-receiver,0.20278,1.0,36130,178176,128,128,reached target block errors
+-3.0,neural-receiver,0.17391,1.0,30987,178176,128,128,reached target block errors
+-2.5,neural-receiver,0.12492,1.0,22258,178176,128,128,reached target block errors
+-2.0,neural-receiver,0.04023,0.75,14336,356352,192,256,reached target block errors
+-1.5,neural-receiver,0.0026291,0.086806,4216,1603584,100,1152,reached target block errors
+-1.0,neural-receiver,0.0006865,0.0088778,10764,15679488,100,11264,reached target block errors
+-0.5,neural-receiver,0.00032005,0.0028384,15853,49532928,101,35584,reached target block errors
+0.0,neural-receiver,0.0001362,0.0011927,15895,116705280,100,83840,reached target block errors
+0.5,neural-receiver,8.692e-05,0.00064844,15487,178176000,83,128000,reached max iterations
+1.0,neural-receiver,3.9265e-05,0.00034375,6996,178176000,44,128000,reached max iterations
+1.5,neural-receiver,3.0369e-05,0.00024219,5411,178176000,31,128000,reached max iterations
+2.0,neural-receiver,1.9004e-05,0.00014062,3386,178176000,18,128000,reached max iterations
+2.5,neural-receiver,1.0882e-05,6.25e-05,1939,178176000,8,128000,reached max iterations

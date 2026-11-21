@@ -7,3 +7,5 @@ checkpoints/
 weights/
 results/*.npz
 *.egg-info/
+*.onnx
+results/*.log

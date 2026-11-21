@@ -83,7 +83,7 @@ Package lives at the repo root.
 - [x] Ported-weights Flax model matches torch LLRs within 1e-4 (4.96e-5, CPU)
 - [ ] Ported model's BLER curve overlays Sionna reference (≤ 0.2 dB gap)
 - [ ] JAX-trained model reaches BLER 1e-4 within 0.5 dB of the reference NRX (reference: ~2.5 dB Eb/N0; perfect CSI ~1.0 dB; LS ~5.5 dB)
-- [ ] All shapes static; train step compiles once (no retracing)
+- [x] All shapes static; train step compiles once (no retracing) — asserted in `train.py` and `tests/test_train.py`
 
 ## Risks
 | Risk | Mitigation |
@@ -92,6 +92,9 @@ Package lives at the repo root.
 | LayerNorm axis/layout mismatch (CHW vs HWC scale/offset) | Dedicated parity test |
 | Torch↔JAX transfer overhead dominates | Pre-generate an on-disk dataset (`.npz`) for training |
 | Training recipe drift | Match reference exactly first (per-batch Eb/N0, Adam defaults); variants only after |
+
+## Finding: pilots are part of the model
+Sionna 2.x draws Kronecker pilots from the active device's torch RNG. The tutorial weights were trained on CUDA with seed 42 and the pilots aren't in the state_dict, so on CPU the reference NRX fails until the pilots are recovered (`nrx/pilots.py`). Exact pilots: regenerate on any CUDA host (STEPS cloud checklist).
 
 ## Out of scope (Step 2+)
 HLO dumps, latency vs. 0.5 ms slot budget, bf16/int8, TPU runs, StableHLO export, XLA issues/PRs.

@@ -50,12 +50,10 @@ Sionna's CDL-C generation is the likely bottleneck, not the NRX. Plan for:
 
 **Done when:** fresh clone → `uv sync` → smoke passes.
 
-## 2. Reference run
-- [ ] Run the Sionna notebook unchanged (locally, CPU is fine for eval with fewer batches; or on GPU)
-- [ ] Export its BER/BLER for: perfect-CSI LMMSE, LS LMMSE, NRX (pre-trained) → `results/reference.csv` (cols: `ebno_db, system, ber, bler, n_bits, n_blocks`)
-- [ ] Record the stopping criteria used (max iters / target block errors) — reuse them in step 6/8 for a fair overlay
-
-**Done when:** `reference.csv` exists and the NRX curve hits BLER 1e-4 near ~2.5 dB.
+## 2. Reference run ✅ (from the notebook's stored outputs)
+- [x] `results/reference.csv`: BER/BLER of perfect-CSI, LS, and NRX parsed from the notebook's executed cells
+- [x] Stopping criteria: `batch_size=128, num_target_block_errors=100, max_mc_iter=1000, target_bler=1e-4`
+- Notebook Eb/N0 at BLER 1e-4: perfect CSI 0.55 dB, NRX 2.21 dB, LS 5.05 dB
 
 ## 3. Config + data bridge ✅
 - [x] `nrx/config.py`: frozen `Config` with every notebook parameter
@@ -74,21 +72,17 @@ Sionna's CDL-C generation is the likely bottleneck, not the NRX. Plan for:
 - [x] `tests/test_weight_port.py`: real CDL-C batch over Eb/N0 −5…10 dB, **max|ΔLLR| = 4.96e-5** (max |LLR| 42.8) on CPU — acceptance #1 met
 - `nrx/torch_ref.py` holds the notebook's torch model for the parity test
 
-## 6. Evaluate ported model
-- [ ] `evaluate.py`: sweep −5…10 dB in 0.5 dB steps; JAX LLRs → reference framework → Sionna resource-grid demapper → LDPC decoder → BER/BLER
-- [ ] Same stopping criteria as step 2
-- [ ] Overlay with `reference.csv` → `results/ber_bler_ported.png`
+## 6. Evaluate ported model — reduced run ✅, full run on cloud
+- [x] `nrx/evaluate.py`: `sim_ber` sweep for `jax-ported`, `torch-ref`, both baselines, `jax-trained`; same seed per system → same channel draws
+- [x] **Pilots fix**: Sionna 2.x draws Kronecker pilots from the device RNG; the weights were trained on CUDA (seed 42), so CPU pilots don't match and the NRX fails (BER ≈ 0.44). `nrx/pilots.py` recovers them from the weights by gradient ascent on the BMD rate (y is linear in pilots), snaps to QPSK, greedy polish → `weights/reference/pilots.npy`. `make_resource_grid()` applies it.
+- [x] Reduced sweep (`max_mc_iter=40`): `results/ber_bler_ported_reduced.{csv,png}`. jax-ported ≡ torch-ref. vs notebook NRX at BLER 1e-1/1e-2/1e-3: −1.49/−1.05/−0.01 dB vs −1.53/−1.03/+0.14 dB
+- [ ] Full sweep at `max_mc_iter=1000` to resolve 1e-4 (acceptance #2) — cloud
 
-**Done when:** BLER gap ≤ 0.2 dB (acceptance #2). **Local work ends here.**
-
-## 7. Train from scratch (GPU/TPU host)
-- [ ] `loss.py`: `1 − BCE_log2(LLR, bits)` over data REs only (mask pilots/guards/DC — confirm vs 0.2.4)
-- [ ] `train.py`: `jax.jit` step, Optax Adam, batch 128, 30k iters, Orbax checkpoint every 1k, log BMD rate + step wall-clock
-- [ ] Assert no retracing (count compiles via `jax.log_compiles` or a trace counter) — acceptance #4
-- [ ] Short LR sweep {1e-3, 5e-4} for ~2k iters; continue the better one
-- [ ] If compute-limited: cut to ~5k iters and report it
-
-**Done when:** BMD-rate curve plateaus; final checkpoint saved.
+## 7. Train from scratch — code ✅, run on cloud
+- [x] `nrx/loss.py`: BMD rate over data REs (static gather)
+- [x] `nrx/train.py`: jitted step, Adam (torch defaults), one Eb/N0 per batch, Sionna in a prefetch thread, Orbax every 1k (resumable), `train_log.csv` with step/wait ms, asserts **one trace**
+- [x] CPU smoke: 40 steps at B=16, rate −3.0 → −0.03, 1 trace, resume + `load_checkpoint` OK; `tests/test_train.py`
+- [ ] 30k steps at B=128 — cloud (CPU ≈ 0.2 s/step at B=16)
 
 ## 8. Evaluate trained model
 - [ ] Run step 6 sweep with the trained checkpoint
@@ -108,3 +102,35 @@ Sionna's CDL-C generation is the likely bottleneck, not the NRX. Plan for:
        └→ 3 → 4 → 5 → 6 ─→ 7 → 8 → 9
 ```
 Steps 2 and 3–4 can run in parallel. Step 7 needs a GPU host and the dataset decision from 0.4.
+
+---
+
+## Cloud session checklist (one GPU box, ideally + one TPU VM)
+Everything below is scripted; nothing needs writing on the host.
+
+**Setup**
+- [ ] `git clone` + `uv sync --extra cuda` (or `--extra tpu`)
+- [ ] Copy `weights/reference/` (state_dict + `pilots.npy`) — both gitignored
+- [ ] `uv run pytest -q` passes on the host
+
+**1. Exact pilots (CUDA only)** — the tutorial weights were trained with pilots from the CUDA RNG at seed 42
+- [ ] `python -c "import sionna.phy; sionna.phy.config.seed=42; from nrx.data import make_resource_grid; import numpy as np; np.save('weights/reference/pilots_cuda_seed42.npy', make_resource_grid(apply_saved_pilots=False).pilot_pattern.pilots.cpu().numpy())"`
+- [ ] Compare with recovered `pilots.npy` (count mismatches); if they differ, rerun the sweep with the CUDA ones
+
+**2. Backends (goal 1)**
+- [ ] `python bench/backends.py --make-fixture && python bench/backends.py` on GPU and TPU
+- [ ] `python bench/inspect_compiler.py --batch 1 --dump-passes` on GPU and TPU
+
+**3. Full BLER sweep (step 6, acceptance #2)** — notebook settings (`max_mc_iter=1000`)
+- [ ] `python -m nrx.evaluate --systems jax-ported torch-ref baseline-perfect-csi baseline-ls-estimation --out results/ber_bler_ported.csv`
+
+**4. Training (step 7, acceptance #3–4)**
+- [ ] `python -m nrx.train --steps 30000 --ckpt-dir checkpoints/run1` (resumable; logs `train_log.csv`; asserts one trace)
+- [ ] `python -m nrx.evaluate --systems jax-trained --checkpoint checkpoints/run1 --out results/ber_bler_trained.csv`
+
+**5. TensorRT (goal 2)** — GPU only
+- [ ] `python bench/export_onnx.py` (or copy `results/onnx/`)
+- [ ] `trtexec --onnx=results/onnx/nrx_b1.onnx` fp32 and `--fp16`; same for B=8, 128. Record p50/p99 GPU compute time
+- [ ] Same GPU: `bench/backends.py` p50/p99 for XLA → matched table
+
+**6. Bring back** `results/`, `checkpoints/run1/train_log.csv`, final checkpoint
