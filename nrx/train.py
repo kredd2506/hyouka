@@ -118,7 +118,7 @@ def train(steps, batch_size, lr, ckpt_dir, ckpt_every, log_every, seed):
         mngr.save(steps, args=ocp.args.StandardSave({"params": params, "opt_state": opt_state}), force=True)
     mngr.wait_until_finished()
     log.close()
-    assert TRACE_COUNT["train_step"] == 1, f"train_step retraced {TRACE_COUNT['train_step']} times"
+    assert TRACE_COUNT["train_step"] == (1 if start < steps else 0), f"train_step retraced {TRACE_COUNT['train_step']} times"
     return params
 
 

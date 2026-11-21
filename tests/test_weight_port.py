@@ -1,5 +1,6 @@
 import pathlib
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -23,7 +24,8 @@ def test_ported_llrs_match_torch(batch):
 
     params = load_reference(str(WEIGHTS))
     z = make_inputs(jnp.asarray(batch["y"].numpy()), jnp.asarray(batch["no"].numpy()))
-    out = np.asarray(NeuralReceiver().apply(params, z))
+    with jax.default_matmul_precision("highest"):  # GPUs default to TF32 convs (~1e-2 LLR error)
+        out = np.asarray(NeuralReceiver().apply(params, z))
 
     err = np.max(np.abs(out - ref))
     print(f"max|LLR_jax - LLR_torch| = {err:.3e}, max|LLR| = {np.max(np.abs(ref)):.1f}")

@@ -77,10 +77,11 @@ all-cloud: test pilots-cuda backends compiler onnx sweep train eval-trained  ## 
 clean:  ## Remove generated data (keeps weights, results, checkpoints)
 	rm -rf data/ .pytest_cache
 
+# --python pins the install to the project venv; without it uv may pick up an ambient VIRTUAL_ENV (as on Colab).
 trt-install:  ## TensorRT libs + bindings wheels from pypi.nvidia.com (TRT_CUDA=cu12 on old drivers)
-	uv pip install --extra-index-url https://pypi.nvidia.com \
+	uv pip install --python .venv/bin/python --extra-index-url https://pypi.nvidia.com \
 		tensorrt-$(TRT_CUDA)-libs==$(TRT_VERSION) tensorrt-$(TRT_CUDA)-bindings==$(TRT_VERSION)
-	$(UV_RUN) python -c "import tensorrt_bindings as t; print('TensorRT', t.__version__)"
+	UV_NO_SYNC=1 $(UV_RUN) python -c "import tensorrt_bindings as t; print('TensorRT', t.__version__)"
 
 trt: onnx  ## TensorRT fp32 (TF32 off) / tf32 / fp16, timed like `backends` (run trt-install first)
-	$(UV_RUN) python bench/trt_bench.py
+	UV_NO_SYNC=1 $(UV_RUN) python bench/trt_bench.py

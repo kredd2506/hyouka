@@ -37,6 +37,21 @@ Fill in as you go. Times are wall clock.
 | 7 | `make train` | L4 | | | **5k of 30k steps**: rate 0.76, 159 ms/step, Sionna wait 0.02 ms, traces = 1 |
 | 8 | `make eval-trained` | L4 | | | 5k-step model @1e-2 = 1.51 dB (ref −1.03): undertrained |
 
+### Session 2 (Colab L4, 2026-11-21 17:32 UTC, commit f0504d2)
+
+| Target | Result / notes |
+|---|---|
+| `make test` | 10 passed, **weight-port parity failed: 1.0e-2** (JAX ran on GPU with TF32). Fixed: test forces `highest` precision |
+| `make pilots-cuda` | **0/232** differ: recovery is exact |
+| `make backends` default (TF32) | p99 B=1 **0.875 ms** (dLLR 1.8e-5), B=8 2.01 ms (9.1e-3), B=128 44.8 ms (1.6e-2) |
+| `make backends` highest (fp32) | p99 B=1 **1.013 ms** (5.1e-5), B=8 3.05 ms (2.5e-5), B=128 71.8 ms (5.7e-5) |
+| `make compiler` B=1 | 60 kernels both precisions (default 25 kCustom, highest 16). Ablation (median, TF32): full 0.797, −LN 0.689, −res convs 0.340, in/out conv + glue 0.234, dispatch floor 0.088 ms → res convs 57%, LN 13%, dispatch 11%. fp32: 0.802 ms, convs 59%, LN 11% |
+| `make compiler` B=128 | 85 kernels. TF32: 43.6 ms, convs 71%, LN 23%. fp32: 67.8 ms, convs 81%, LN 11% |
+| `make onnx` | ORT (x86) vs torch: max 1.2e-4–2.9e-4, rms 3–4e-5 |
+| `make trt` | **not run**: `tensorrt_bindings` not importable after install, so uv installed into a different env. Fixed: `uv pip install --python .venv/bin/python` |
+| `make train` | resumed at **28000** → 30000, rate ≈ 0.79, 158 ms/step, traces 1. `train_log.csv` on Drive has only 7000 rows (steps 5k–28k missing) |
+| `make eval-trained` | **not run**: the kernel had restarted (`NameError: ACCEL`); summary/zip cells not run either |
+
 ### Next session (notebook defaults are set for this)
 - [ ] TensorRT: `make trt-install` (libs + bindings wheels from pypi.nvidia.com; the PyPI `tensorrt` sdist failed), `make trt`
 - [ ] Precision: `make backends PRECISION=highest` (true fp32) next to default (TF32); TRT fp32 / tf32 / fp16
