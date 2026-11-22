@@ -52,6 +52,16 @@ Fill in as you go. Times are wall clock.
 | `make train` | resumed at **28000** → 30000, rate ≈ 0.79, 158 ms/step, traces 1. `train_log.csv` on Drive has only 7000 rows (steps 5k–28k missing) |
 | `make eval-trained` | **not run**: the kernel had restarted (`NameError: ACCEL`); summary/zip cells not run either |
 
+### Session 3 (Colab L4, 2026-11-22 01:24 UTC, commit cf17d50)
+
+| Target | Result / notes |
+|---|---|
+| `make test` | 11 passed on GPU |
+| `make backends` | p99 B=1/8/128: TF32 0.869 / 2.07 / 44.2 ms, fp32 0.867 / 3.01 / 67.9 ms |
+| `make trt` | TensorRT 11.5.0.63. p99 fp32 0.547 / 2.99 / 62.7 ms, TF32 0.553 / 1.85 / 53.3 ms. fp16 skipped: no FP16 builder flag in TRT 11 |
+| `make train` | already at 30000, skipped |
+| `make eval-trained` | jax-trained @1e-2/1e-3/1e-4 = −1.01 / 0.23 / 2.43 dB (notebook −1.03 / 0.14 / 2.21) → **acceptance #3 met** |
+
 ### Next session (notebook defaults are set for this)
 - [ ] TensorRT: `make trt-install` (libs + bindings wheels from pypi.nvidia.com; the PyPI `tensorrt` sdist failed), `make trt`
 - [ ] Precision: `make backends PRECISION=highest` (true fp32) next to default (TF32); TRT fp32 / tf32 / fp16

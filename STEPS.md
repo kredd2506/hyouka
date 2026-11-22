@@ -82,11 +82,11 @@ Sionna's CDL-C generation is the likely bottleneck, not the NRX. Plan for:
 - [x] `nrx/loss.py`: BMD rate over data REs (static gather)
 - [x] `nrx/train.py`: jitted step, Adam (torch defaults), one Eb/N0 per batch, Sionna in a prefetch thread, Orbax every 1k (resumable), `train_log.csv` with step/wait ms, asserts **one trace**
 - [x] CPU smoke: 40 steps at B=16, rate −3.0 → −0.03, 1 trace, resume + `load_checkpoint` OK; `tests/test_train.py`
-- [ ] 30k steps at B=128 — 5k done on L4 (rate 0.76, 159 ms/step, data wait ≈ 0); full run next session
+- [x] 30k steps at B=128 on L4: final rate ≈ 0.79, 158 ms/step, data wait ≈ 0, one trace (log for steps 5k–28k lost on Drive)
 
 ## 8. Evaluate trained model
-- [ ] Run step 6 sweep with the trained checkpoint
-- [ ] Plot vs the 3 baselines + ported model → `results/ber_bler.png`, `results/ber_bler.csv`
+- [x] Sweep with the trained checkpoint → `results/ber_bler_trained.{csv,png}`
+- [x] BLER 1e-2 / 1e-3 / 1e-4 at −1.01 / 0.23 / 2.43 dB vs notebook −1.03 / 0.14 / 2.21 → acceptance #3 met
 
 **Done when:** BLER 1e-4 within 0.5 dB of reference NRX (acceptance #3).
 

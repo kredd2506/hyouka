@@ -1,4 +1,4 @@
-# Compiler walk — backend=gpu, jax 0.12.1, B=1
+# Compiler walk — backend=gpu (NVIDIA L4), jax 0.12.1, B=1, precision=default
 
 ## 1. jaxpr: 186 equations
   broadcast_in_dim×34, add×30, mul×17, reduce_sum×16, div×16, sub×16, conv_general_dilated×10, reshape×10, square×8, sqrt×8, integer_pow×8, custom_jvp_call×8, transpose×1, log×1, real×1, imag×1, concatenate×1
@@ -7,32 +7,32 @@
   broadcast_in_dim×102, constant×50, add×46, divide×24, multiply×17, reduce×16, subtract×16, convolution×10, reshape×10, sqrt×8, transpose×1, log×1, real×1, imag×1, concatenate×1, maximum×1
 
 ## 3. Optimized HLO: 60 kernels launched per call
-  fusion:kInput×49, fusion:kCustom×9, fusion:kLoop×2
+  fusion:kCustom×32, fusion:kInput×25, fusion:kLoop×3
   One residual block, in launch order:
     fusion:kInput      f32[1,5,14,128]{3,2,1,0}           input_concatenate_fusion
-    fusion:kCustom     f32[128,5,3,3]{3,2,1,0}            wrapped_transpose.8
+    fusion:kLoop       f32[128,5,3,3]{3,2,1,0}            wrapped_transpose.8
     fusion:kInput      f32[256]{0}                        input_reduce_fusion.15
-    fusion:kInput      f32[]                              input_reduce_fusion.16
+    fusion:kCustom     f32[]                              input_reduce_fusion.16
     fusion:kInput      f32[256]{0}                        input_reduce_fusion.14
-    fusion:kInput      f32[]                              input_reduce_fusion.17
+    fusion:kCustom     f32[]                              input_reduce_fusion.17
     fusion:kInput      f32[128,14,128]{2,1,0}             wrapped_transpose.7
-    fusion:kInput      f32[1,128,14,128]{3,2,1,0}         input_transpose_fusion.1
+    fusion:kCustom     f32[1,128,14,128]{3,2,1,0}         input_transpose_fusion.1
     fusion:kCustom     f32[128,128,3,3]{3,2,1,0}          wrapped_transpose.9
     fusion:kInput      f32[256]{0}                        input_reduce_fusion.13
-    fusion:kInput      f32[]                              input_reduce_fusion.18
+    fusion:kCustom     f32[]                              input_reduce_fusion.18
     fusion:kInput      f32[256]{0}                        input_reduce_fusion.12
-    fusion:kInput      f32[]                              input_reduce_fusion.19
+    fusion:kCustom     f32[]                              input_reduce_fusion.19
 
 ## 4. Memory: args 19.5 MB, output 0.01 MB, temp 5.0 MB
   one activation [B,14,128,128] f32 = 0.92 MB
 
-## 5. Where the time goes (isolated microbenchmarks, median ms)
-  conv 128→128 3×3            0.213
-  conv + bias                 0.246   (bias add costs +0.033)
-  LayerNorm                   0.139
-  LayerNorm + ReLU            0.137
-  full NRX                    0.831
-  8×(conv+bias) = 1.971 (237%),  8×(LN+ReLU) = 1.098 (132%),  sum 3.070 vs full 0.831
+## 5. Where the time goes (ablation inside the full compiled graph, median ms)
+  full NRX                                0.803
+  without LayerNorm                       0.711
+  without the 8 residual convs            0.340
+  without both (in/out conv + glue)       0.223
+  dispatch floor (jit x+1)                0.085
+  ⇒ 8 residual convs ≈ 0.464 ms (58%), 8 LayerNorms ≈ 0.092 ms (11%), dispatch ≈ 11% of a call
 
 ## 6. Pass dump: 563 pass runs, 68 distinct passes, 41 pipelines, in data/xla_dump/gpu/
   pipelines: root → annotate-host-compute → pre-spmd-partitioner → sharding-removal → host-compute → optimization → simplification → simplification-2 → collective-optimizations → conv_canonicalization → reshape_mover_after_conv_canonicalization → simplify_after_conv_canonicalization → layout_assignment → layout_normalization → nvptx_post-layout_assignment_part_1 → hlo_normalization → post-layout_assignment → float_normalization → remove-no-op-reduce-precision-algebraic-simplifier → nvptx_post-layout_assignment_part_2 → dynamic-slice → pre-fusion → fusion → post-fusion_optimization → async-collective-conversion → post-fusion-simplification-pipeline_optimization → post-fusion-verification-pipeline_optimization → collective-schedule-linearizer → invariant-checkers → async-wrapper → fusion-wrapper → config-assigner → propagate-call-metadata → pre-scheduling-copy-insertion → pre-scheduling-passes → scheduled-gpu-module → post-scheduler-xla-transforms → post-scheduling-passes → async-to-sync-converter → remat-pipeline → sanitize-constant-names

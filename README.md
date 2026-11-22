@@ -45,13 +45,34 @@ See `results/ber_bler_ported.{csv,png}`.
 |---|---|---|---|
 | XLA:CPU (jax 0.12.1) | 3.04 ms | 3.17 ms | 4.96e-5 |
 | Metal GPU via `jax-metal` PJRT plugin (jax 0.4.34) | 1.25 ms | 1.34 ms | 3.72e-5 |
-| XLA:GPU on NVIDIA L4 (jax 0.12.1, CUDA 13) | 0.78 ms | 0.90 ms | 6.2e-3 (TF32) |
+| XLA:GPU on NVIDIA L4 (jax 0.12.1, CUDA 13) | 0.81 ms | 0.87 ms | 2.1e-5 |
 
 The model costs 4.05 GFLOP per user per slot, so meeting 0.5 ms at B = 1 needs ≥ 8.1 TFLOP/s sustained.
-The L4 runs its convolutions in TF32 by default (10-bit mantissa), hence the larger LLR error. True-fp32 and
-TensorRT numbers on the same GPU come next.
 
-**4. A look inside the compiler (XLA:CPU, B = 1).** 186 jaxpr equations become 305 StableHLO ops and then
+**4. XLA vs TensorRT on the same GPU (NVIDIA L4).** Same ONNX-exported weights, same fixtures, p99 batch latency:
+
+| B | TensorRT 11.5 fp32 | XLA fp32 (`highest`) | TensorRT TF32 | XLA TF32 (default) |
+|---|---|---|---|---|
+| 1 | **0.547 ms** | 0.867 ms | 0.553 ms | 0.869 ms |
+| 8 | 2.99 ms | 3.01 ms | **1.85 ms** | 2.07 ms |
+| 128 | 62.7 ms | 67.9 ms | 53.3 ms | **44.2 ms** |
+
+At one user per slot TensorRT is 1.6× faster and only just misses the 0.5 ms deadline; XLA is 0.32 ms behind. The
+gap closes by B = 8, and at B = 128 XLA in TF32 is 17% faster than TensorRT. Neither stack meets 0.5 ms on an L4.
+At B = 1 both pick fp32-accurate conv kernels even when TF32 is allowed (LLR error ~2e-5 either way); TF32 only
+pays from B = 8 up, at ~1e-2 LLR error. TensorRT 11 dropped the FP16 builder flag (strongly-typed networks only),
+so fp16 needs an fp16 ONNX graph and isn't measured yet. Data: `results/{backend,trt}_latency.jsonl`.
+
+Where XLA's B = 1 time goes, by ablation inside the compiled graph: the 8 residual convs ≈ 58%, the 8 LayerNorms
+≈ 11%, per-call dispatch ≈ 11% (0.085 ms), and the input/output convs plus glue alone ≈ 0.22 ms
+([results/compiler_gpu_b1.md](results/compiler_gpu_b1.md)).
+
+**5. Training from scratch in JAX reproduces the receiver.** 30k Adam steps at B = 128 on the L4 (158 ms/step, Sionna
+data generation fully hidden behind the step). The JAX-trained model reaches BLER 1e-2 / 1e-3 / 1e-4 at
+−1.01 / 0.23 / 2.43 dB against the notebook's −1.03 / 0.14 / 2.21 dB: within 0.22 dB
+([results/ber_bler_trained.png](results/ber_bler_trained.png)).
+
+**6. A look inside the compiler (XLA:CPU, B = 1).** 186 jaxpr equations become 305 StableHLO ops and then
 62 kernels. Convs take ~75% of the time and LayerNorm ~20%. Each LayerNorm becomes 5 kernels, and the conv bias add
 isn't fused into the conv. See [results/compiler_cpu_b1.md](results/compiler_cpu_b1.md).
 
@@ -104,10 +125,9 @@ lists the order and what to bring back.
 
 TensorRT comparison (same GPU):
 ```bash
-make onnx
-trtexec --onnx=results/onnx/nrx_b1.onnx                # fp32
-trtexec --onnx=results/onnx/nrx_b1.onnx --fp16
-make backends                                          # XLA numbers on the same GPU
+make trt-install                                       # TRT_CUDA=cu12 on drivers < 580
+make trt                                               # ONNX export + TensorRT fp32 / tf32
+make backends PRECISION=highest && make backends       # XLA fp32 and TF32 on the same GPU
 ```
 
 Notes:
@@ -170,8 +190,9 @@ Generated and ignored: `weights/`, `data/` (fixtures, XLA dumps), `checkpoints/`
 - [x] Reduced BLER overlay (≤ 0.15 dB down to 1e-3)
 - [x] Training loop compiles once (verified on CPU)
 - [x] Full BLER sweep to 1e-4 (L4): 0.12 dB from the notebook
-- [ ] JAX-trained model within 0.5 dB of reference at BLER 1e-4 (GPU/TPU)
-- [ ] XLA vs TensorRT on the same GPU; TPU latency
+- [x] JAX-trained model within 0.5 dB of reference at BLER 1e-4 (L4: 0.22 dB)
+- [x] XLA vs TensorRT on the same GPU (L4, fp32 and TF32)
+- [ ] TensorRT fp16 (needs an fp16 ONNX graph); TPU latency
 
 ## Credits
 Model, system setup and pre-trained weights come from NVIDIA's [Sionna](https://github.com/NVlabs/sionna)
