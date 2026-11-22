@@ -119,7 +119,8 @@ Everything below is scripted; nothing needs writing on the host.
 
 **2. Backends (goal 1)**
 - [ ] `python bench/backends.py --make-fixture && python bench/backends.py` on GPU and TPU
-- [ ] `python bench/inspect_compiler.py --batch 1 --dump-passes` on GPU and TPU
+- [x] `python bench/inspect_compiler.py --batch 1 --dump-passes` on GPU and TPU (GPU done on L4)
+- [ ] TPU: `for p in default high highest; do make backends compiler PRECISION=$p; done` and `make train RUN=checkpoints/run_tpu STEPS=300` (Colab TPU runtime or TPU VM; see README)
 
 **3. Full BLER sweep (step 6, acceptance #2)** — notebook settings (`max_mc_iter=1000`)
 - [ ] `python -m nrx.evaluate --systems jax-ported torch-ref baseline-perfect-csi baseline-ls-estimation --out results/ber_bler_ported.csv`

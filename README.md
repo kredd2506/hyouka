@@ -115,6 +115,13 @@ Run `make help` for every target. Each one is a single `uv run python …` comma
 | `make sweep-reduced` | BLER sweep, 40 MC iterations, 4 systems | ~30 min |
 | `make pilots-recover` | Re-derives the training pilots from the weights | ~2 min |
 
+### Colab (GPU or TPU), no setup
+Open [`notebooks/nrx_colab.ipynb`](notebooks/nrx_colab.ipynb) in Colab
+([direct link](https://colab.research.google.com/github/kredd2506/hyouka/blob/cloud-session/notebooks/nrx_colab.ipynb)),
+pick an **L4/A100 GPU** or a **v5e-1/v6e-1 TPU** runtime, and use *Runtime → Run all*. The notebook detects the
+accelerator, installs the matching build, runs the sections that apply, keeps checkpoints on Google Drive, and ends
+with a summary table and a results zip.
+
 ### GPU host (CUDA)
 ```bash
 make setup EXTRA=cuda
@@ -136,12 +143,32 @@ Notes:
 - Training resumes from the latest checkpoint in `RUN` (default `checkpoints/run1`). Change length with
   `make train STEPS=5000`.
 
-### TPU VM
+### TPU
+TensorRT, the exact-pilot step and the sweeps need a GPU. On a TPU the useful runs are XLA:TPU latency and the
+compiler walk, in three precisions, plus a short training run:
+
+| `PRECISION` | What XLA:TPU does for f32 convs | Compare with |
+|---|---|---|
+| `default` | one bf16 pass (fastest, least accurate) | GPU TF32 |
+| `high` | bf16×3, close to fp32 | |
+| `highest` | full fp32 emulation (~6 bf16 passes) | GPU fp32 |
+
+On Colab, pick a TPU runtime and *Run all* (see above). On a Cloud TPU VM:
 ```bash
+gcloud compute tpus tpu-vm create nrx --zone=us-central1-a \
+    --accelerator-type=v5litepod-1 --version=v2-alpha-tpuv5-lite
+gcloud compute tpus tpu-vm ssh nrx --zone=us-central1-a
+# on the VM:
+curl -LsSf https://astral.sh/uv/install.sh | sh && source ~/.local/bin/env
+git clone -b cloud-session https://github.com/kredd2506/hyouka.git && cd hyouka
 make setup EXTRA=tpu
-make test backends compiler
-make train            # Sionna runs on the host CPU here, so data generation may bound step time; see wait_ms in train_log.csv
+make host-info test
+for p in default high highest; do make backends compiler PRECISION=$p; done
+make train RUN=checkpoints/run_tpu STEPS=300     # Sionna runs on the host CPU: compare wait_ms with step_ms
 ```
+Delete the VM afterwards (`gcloud compute tpus tpu-vm delete nrx --zone=us-central1-a`), since it bills while it
+exists. Pilots come from `assets/`, so the pre-trained weights work on a TPU host even though its torch RNG differs.
+
 
 ### Apple GPU (Metal), optional
 `jax-metal` was last released for jax 0.4.34 and can't load into this project's env, so it gets a separate venv:
@@ -177,8 +204,11 @@ nrx/
   fetch_weights.py  download + checksum
 bench/
   backends.py       latency + parity on any XLA backend
-  inspect_compiler.py  compiler-stack walk and per-op timing
+  inspect_compiler.py  compiler-stack walk and ablation time breakdown
   export_onnx.py    ONNX export for TensorRT
+  trt_bench.py      TensorRT engines (fp32 / TF32) timed like backends.py
+notebooks/
+  nrx_colab.ipynb   one-click Colab run on GPU or TPU
 tests/              pytest suite (make test)
 assets/             recovered training pilots
 results/            reference.csv (from the notebook), sweeps, latency, compiler reports
@@ -192,7 +222,8 @@ Generated and ignored: `weights/`, `data/` (fixtures, XLA dumps), `checkpoints/`
 - [x] Full BLER sweep to 1e-4 (L4): 0.12 dB from the notebook
 - [x] JAX-trained model within 0.5 dB of reference at BLER 1e-4 (L4: 0.22 dB)
 - [x] XLA vs TensorRT on the same GPU (L4, fp32 and TF32)
-- [ ] TensorRT fp16 (needs an fp16 ONNX graph); TPU latency
+- [ ] XLA:TPU latency and compiler walk (notebook and Makefile ready; not run yet)
+- [ ] TensorRT fp16 (needs an fp16 ONNX graph)
 
 ## Credits
 Model, system setup and pre-trained weights come from NVIDIA's [Sionna](https://github.com/NVlabs/sionna)
