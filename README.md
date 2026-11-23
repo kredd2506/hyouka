@@ -77,8 +77,12 @@ Where XLA's B = 1 time goes, by ablation inside the compiled graph: the 8 residu
 | 128 | **9.15 ms** | 14.1 ms | 24.6 ms | 53.3 ms | 44.2 ms |
 | max \|ΔLLR\| | 0.21–0.25 | 8e-4–1.5e-3 | 3e-5–1.3e-3 | 5e-5–1.6e-2 | 2e-5–1.6e-2 |
 
-- XLA:TPU's default precision runs the convs in a single bf16 pass. That meets the deadline at B = 1, but the LLRs
-  move by ~0.2 (max |LLR| ≈ 33). Whether that costs BLER is the next measurement (notebook section 8, TPU).
+- XLA:TPU's default precision runs the convs in a single bf16 pass. That meets the deadline at B = 1, and although
+  the LLRs move by ~0.2 (max |LLR| ≈ 33), **the BLER doesn't change**: a reduced sweep on the TPU (same seed, same
+  channel draws) gives −1.04 / −0.01 dB at BLER 1e-2 / 1e-3 in bf16 and −1.03 / −0.01 dB in fp32, equal at every
+  point within Monte-Carlo noise ([results/ber_bler_tpu_bf16_reduced.csv](results/ber_bler_tpu_bf16_reduced.csv)).
+  The receiver tolerates bf16 convs, so 0.38 ms at B = 1 is a usable number. (Resolution: ~1e-3 BLER, 5,120 blocks
+  per point.)
 - At fp32-level accuracy the TPU loses to TensorRT at B = 1 (0.64 vs 0.55 ms) and wins 2.5× at B = 128 (24.6 vs
   62.7 ms TensorRT fp32).
 - B = 1 on the TPU is overhead-bound. A trivial jitted call already takes ~0.2 ms (vs 0.085 ms on the L4), out of a
@@ -86,7 +90,13 @@ Where XLA's B = 1 time goes, by ablation inside the compiled graph: the 8 residu
 - XLA:TPU compiles the graph differently from XLA:GPU. It fuses each conv with the following LayerNorm's mean and
   variance reduction (10 `kOutput` fusions), prefetches the weights into on-chip memory asynchronously
   (`copy-start`/`copy-done`), keeps activations in bf16 and LayerNorm statistics in fp32, and splits the complex input
-  with `X64SplitHigh/Low` custom calls ([results/hlo/tpu/](results/hlo/tpu/)).
+  with `X64SplitHigh/Low` custom calls ([results/hlo/tpu/](results/hlo/tpu/)). At B = 1 the graph has 113 top-level
+  ops, many of them `pad`/`slice`/`copy` that re-tile the 128-subcarrier axis because one user can't fill the TPU's
+  tiles; at B = 128 it is 40. The TPU pipeline runs 604 passes (75 distinct, 42 pipelines) against 202 on CPU
+  ([results/compiler_tpu_b1.md](results/compiler_tpu_b1.md)).
+- The ablation breakdown is unreliable on the TPU at B = 128: removing the residual convs made the graph *slower*
+  (11.7 vs 8.9 ms), because XLA re-tiles and re-fuses the reduced graph differently. Removing parts only measures their
+  cost when the rest compiles the same way.
 - Training runs at 24 ms/step on the TPU (bf16) vs 158 ms on the L4, but Sionna generates batches on the host CPU at
   ~36 ms each, so a TPU step waits ~12 ms for data. Feeding the TPU needs the channel model on the accelerator too.
 
@@ -246,7 +256,7 @@ Generated and ignored: `weights/`, `data/` (fixtures, XLA dumps), `checkpoints/`
 - [x] JAX-trained model within 0.5 dB of reference at BLER 1e-4 (L4: 0.22 dB)
 - [x] XLA vs TensorRT on the same GPU (L4, fp32 and TF32)
 - [x] XLA:TPU latency in bf16 / bf16×3 / fp32 (Colab v5e-1)
-- [ ] BLER cost of TPU bf16 (reduced sweep, notebook section 8); TPU compiler report (pass-dump fix pending a run)
+- [x] BLER cost of TPU bf16: none measurable (reduced sweep); TPU compiler report and pass dump
 - [ ] TensorRT fp16 (needs an fp16 ONNX graph)
 
 ## Credits

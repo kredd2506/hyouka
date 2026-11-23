@@ -73,6 +73,16 @@ An earlier attempt (b88506f) ran on the host CPU: the notebook looked for `/dev/
 | HLO | 113 top-level ops; 10 conv+LayerNorm-reduction `kOutput` fusions. The op counter skipped tuple-shaped ops (fixed); with the fix the L4 graph has 70 ops, not 60 (10 cuDNN conv calls were missed) |
 | `make train` 300 steps | 24.2 ms/step, Sionna wait 12.1 ms/step (data-bound). Process aborted (exit 134) after the last step: prefetch thread still in torch at exit. Fixed: thread joined |
 
+### Session 5 (Colab TPU v5e-1, 2026-11-23 02:33 UTC, commit 1d712b4)
+
+| Target | Result / notes |
+|---|---|
+| `make test` | 10 passed; log10 channel off by up to 2.9e-5 absolute on TPU (fixed in 97844c1, after this run started) |
+| `make backends` | p99 B=1/8/128: bf16 0.396 / 0.584 / 9.04 ms; bf16×3 0.541 / 1.11 / 14.1 ms; fp32 0.559 / 1.79 / 24.6 ms |
+| `make compiler` | All six reports written. B=1: 113 ops; B=128: 39–40 ops. Pass dump 604 runs / 75 passes / 42 pipelines. B=128 ablation non-additive (removing convs → slower) |
+| `make train` | resumed at 300, no steps, exited cleanly (no exit 134) |
+| TPU sweep (40 MC iters) | bf16 −1.04 / −0.01 dB, fp32 −1.03 / −0.01 dB at 1e-2 / 1e-3: **bf16 costs no BLER** |
+
 ### Next session (notebook defaults are set for this)
 - [ ] TensorRT: `make trt-install` (libs + bindings wheels from pypi.nvidia.com; the PyPI `tensorrt` sdist failed), `make trt`
 - [ ] Precision: `make backends PRECISION=highest` (true fp32) next to default (TF32); TRT fp32 / tf32 / fp16
