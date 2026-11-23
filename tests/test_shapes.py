@@ -35,7 +35,8 @@ def test_make_inputs_matches_torch_layout(batch):
     np.testing.assert_array_equal(z[..., 1], y[:, 1].real)
     np.testing.assert_array_equal(z[..., 2], y[:, 0].imag)
     np.testing.assert_array_equal(z[..., 3], y[:, 1].imag)
-    np.testing.assert_allclose(z[:, 0, 0, 4], np.log10(batch["no"].numpy()), rtol=1e-5)  # TPU log10 differs in the last bits
+    # XLA:TPU's log is approximate: up to 3e-5 absolute error here (v5e), vs exact on CPU/GPU
+    np.testing.assert_allclose(z[:, 0, 0, 4], np.log10(batch["no"].numpy()), rtol=1e-5, atol=1e-4)
 
 
 def test_model_shapes_and_param_count():
