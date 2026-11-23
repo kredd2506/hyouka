@@ -1,7 +1,7 @@
 # Cloud session log
 
-Branch `cloud-session`: run the checklist in [STEPS.md](STEPS.md#cloud-session-checklist-one-gpu-box-ideally--one-tpu-vm),
-commit results here, merge back to `main` when done.
+Log of the cloud runs (Colab L4 sessions 1–3, TPU v5e sessions 4–5). Done on the `cloud-session` branch and merged
+into `main` on 2026-11-23; new runs can go straight to `main`.
 
 ## Colab
 Upload [`notebooks/nrx_colab.ipynb`](notebooks/nrx_colab.ipynb) to Colab (*File → Upload notebook*), pick a GPU runtime

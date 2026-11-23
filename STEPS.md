@@ -91,8 +91,8 @@ Sionna's CDL-C generation is the likely bottleneck, not the NRX. Plan for:
 **Done when:** BLER 1e-4 within 0.5 dB of reference NRX (acceptance #3).
 
 ## 9. Write-up
-- [ ] README: setup, how to reproduce each step, results plot, parity numbers, ms/train-step and hardware, any deviations (iters, LR, dataset size)
-- [ ] Tick acceptance boxes in PLAN.md
+- [x] README: answer up front, results per backend, reproduce instructions for laptop / Colab / CUDA / TPU / Metal
+- [x] Acceptance boxes in PLAN.md ticked (#1–#4 met)
 
 ---
 
