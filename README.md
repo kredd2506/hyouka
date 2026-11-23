@@ -46,6 +46,7 @@ See `results/ber_bler_ported.{csv,png}`.
 | XLA:CPU (jax 0.12.1) | 3.04 ms | 3.17 ms | 4.96e-5 |
 | Metal GPU via `jax-metal` PJRT plugin (jax 0.4.34) | 1.25 ms | 1.34 ms | 3.72e-5 |
 | XLA:GPU on NVIDIA L4 (jax 0.12.1, CUDA 13) | 0.81 ms | 0.87 ms | 2.1e-5 |
+| XLA:TPU v5e, fp32 (`highest`) (jax 0.12.1, Colab v5e-1) | 0.51 ms | 0.64 ms | 3.4e-5 |
 
 The model costs 4.05 GFLOP per user per slot, so meeting 0.5 ms at B = 1 needs ≥ 8.1 TFLOP/s sustained.
 
@@ -67,12 +68,34 @@ Where XLA's B = 1 time goes, by ablation inside the compiled graph: the 8 residu
 ≈ 11%, per-call dispatch ≈ 11% (0.085 ms), and the input/output convs plus glue alone ≈ 0.22 ms
 ([results/compiler_gpu_b1.md](results/compiler_gpu_b1.md)).
 
-**5. Training from scratch in JAX reproduces the receiver.** 30k Adam steps at B = 128 on the L4 (158 ms/step, Sionna
+**5. TPU v5e: the only configuration that meets 0.5 ms, at bf16.** Same code and fixtures on a Colab v5e-1, p99:
+
+| B | TPU bf16 (default) | TPU bf16×3 (`high`) | TPU fp32 (`highest`) | L4 TensorRT TF32 | L4 XLA TF32 |
+|---|---|---|---|---|---|
+| 1 | **0.379 ms** | 0.514 ms | 0.638 ms | 0.553 ms | 0.869 ms |
+| 8 | 0.590 ms | 1.02 ms | 1.68 ms | 1.85 ms | 2.07 ms |
+| 128 | **9.15 ms** | 14.1 ms | 24.6 ms | 53.3 ms | 44.2 ms |
+| max \|ΔLLR\| | 0.21–0.25 | 8e-4–1.5e-3 | 3e-5–1.3e-3 | 5e-5–1.6e-2 | 2e-5–1.6e-2 |
+
+- XLA:TPU's default precision runs the convs in a single bf16 pass. That meets the deadline at B = 1, but the LLRs
+  move by ~0.2 (max |LLR| ≈ 33). Whether that costs BLER is the next measurement (notebook section 8, TPU).
+- At fp32-level accuracy the TPU loses to TensorRT at B = 1 (0.64 vs 0.55 ms) and wins 2.5× at B = 128 (24.6 vs
+  62.7 ms TensorRT fp32).
+- B = 1 on the TPU is overhead-bound. A trivial jitted call already takes ~0.2 ms (vs 0.085 ms on the L4), out of a
+  0.34 ms median, so the network itself takes ~0.14 ms, and the 8 residual convs only ~0.05 ms of that in bf16.
+- XLA:TPU compiles the graph differently from XLA:GPU. It fuses each conv with the following LayerNorm's mean and
+  variance reduction (10 `kOutput` fusions), prefetches the weights into on-chip memory asynchronously
+  (`copy-start`/`copy-done`), keeps activations in bf16 and LayerNorm statistics in fp32, and splits the complex input
+  with `X64SplitHigh/Low` custom calls ([results/hlo/tpu/](results/hlo/tpu/)).
+- Training runs at 24 ms/step on the TPU (bf16) vs 158 ms on the L4, but Sionna generates batches on the host CPU at
+  ~36 ms each, so a TPU step waits ~12 ms for data. Feeding the TPU needs the channel model on the accelerator too.
+
+**6. Training from scratch in JAX reproduces the receiver.** 30k Adam steps at B = 128 on the L4 (158 ms/step, Sionna
 data generation fully hidden behind the step). The JAX-trained model reaches BLER 1e-2 / 1e-3 / 1e-4 at
 −1.01 / 0.23 / 2.43 dB against the notebook's −1.03 / 0.14 / 2.21 dB: within 0.22 dB
 ([results/ber_bler_trained.png](results/ber_bler_trained.png)).
 
-**6. A look inside the compiler (XLA:CPU, B = 1).** 186 jaxpr equations become 305 StableHLO ops and then
+**7. A look inside the compiler (XLA:CPU, B = 1).** 186 jaxpr equations become 305 StableHLO ops and then
 62 kernels. Convs take ~75% of the time and LayerNorm ~20%. Each LayerNorm becomes 5 kernels, and the conv bias add
 isn't fused into the conv. See [results/compiler_cpu_b1.md](results/compiler_cpu_b1.md).
 
@@ -149,7 +172,7 @@ compiler walk, in three precisions, plus a short training run:
 
 | `PRECISION` | What XLA:TPU does for f32 convs | Compare with |
 |---|---|---|
-| `default` | one bf16 pass (fastest, least accurate) | GPU TF32 |
+| `default` | one bf16 pass (fastest, least accurate; ~0.2 LLR error here) | GPU TF32 |
 | `high` | bf16×3, close to fp32 | |
 | `highest` | full fp32 emulation (~6 bf16 passes) | GPU fp32 |
 
@@ -222,7 +245,8 @@ Generated and ignored: `weights/`, `data/` (fixtures, XLA dumps), `checkpoints/`
 - [x] Full BLER sweep to 1e-4 (L4): 0.12 dB from the notebook
 - [x] JAX-trained model within 0.5 dB of reference at BLER 1e-4 (L4: 0.22 dB)
 - [x] XLA vs TensorRT on the same GPU (L4, fp32 and TF32)
-- [ ] XLA:TPU latency and compiler walk (notebook and Makefile ready; not run yet)
+- [x] XLA:TPU latency in bf16 / bf16×3 / fp32 (Colab v5e-1)
+- [ ] BLER cost of TPU bf16 (reduced sweep, notebook section 8); TPU compiler report (pass-dump fix pending a run)
 - [ ] TensorRT fp16 (needs an fp16 ONNX graph)
 
 ## Credits

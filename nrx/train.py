@@ -47,16 +47,29 @@ def batches(link, batch_size, seed, prefetch=4):
     One Eb/N0 per batch, uniform in [min, max], as in the tutorial."""
     rng = np.random.default_rng(seed)
     q: queue.Queue = queue.Queue(maxsize=prefetch)
+    stop = threading.Event()
 
     def worker():
-        while True:
+        while not stop.is_set():
             ebno = float(rng.uniform(CONFIG.ebno_db_min, CONFIG.ebno_db_max))
             out = link.sample_torch(batch_size, torch.tensor(ebno))
-            q.put((ebno, out["y"].cpu().numpy(), out["no"].cpu().numpy(), out["c"].cpu().numpy()))
+            item = (ebno, out["y"].cpu().numpy(), out["no"].cpu().numpy(), out["c"].cpu().numpy())
+            while not stop.is_set():
+                try:
+                    q.put(item, timeout=0.1)
+                    break
+                except queue.Full:
+                    pass
 
-    threading.Thread(target=worker, daemon=True).start()
-    while True:
-        yield q.get()
+    # Joined on close(): a thread still inside torch at interpreter exit aborted the process on TPU.
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    try:
+        while True:
+            yield q.get()
+    finally:
+        stop.set()
+        thread.join()
 
 
 def checkpoint_manager(ckpt_dir, every):
@@ -116,6 +129,7 @@ def train(steps, batch_size, lr, ckpt_dir, ckpt_every, log_every, seed):
         mngr.save(step + 1, args=ocp.args.StandardSave({"params": params, "opt_state": opt_state}))
     if mngr.latest_step() != steps:
         mngr.save(steps, args=ocp.args.StandardSave({"params": params, "opt_state": opt_state}), force=True)
+    data.close()
     mngr.wait_until_finished()
     log.close()
     assert TRACE_COUNT["train_step"] == (1 if start < steps else 0), f"train_step retraced {TRACE_COUNT['train_step']} times"

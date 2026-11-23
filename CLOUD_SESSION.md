@@ -62,6 +62,17 @@ Fill in as you go. Times are wall clock.
 | `make train` | already at 30000, skipped |
 | `make eval-trained` | jax-trained @1e-2/1e-3/1e-4 = −1.01 / 0.23 / 2.43 dB (notebook −1.03 / 0.14 / 2.21) → **acceptance #3 met** |
 
+### Session 4 (Colab TPU v5e-1, 2026-11-23 02:10 UTC, commit 8a29fa9)
+An earlier attempt (b88506f) ran on the host CPU: the notebook looked for `/dev/accel0`, which v5e doesn't have.
+
+| Target | Result / notes |
+|---|---|
+| `make test` | 9 passed, 2 failed: log10 channel off in the last bits; weight-port 1.1e-3 at `highest` (fp32 emulated with bf16 passes). Fixed: TPU tolerances |
+| `make backends` | p99 B=1/8/128: bf16 0.379 / 0.590 / 9.15 ms (LLR err 0.21–0.25); bf16×3 0.514 / 1.02 / 14.1 ms; fp32 0.638 / 1.68 / 24.6 ms |
+| `make compiler` | B=1 ablation, bf16: full 0.342, dispatch floor 0.203 ms (59%). fp32: full 0.511, floor 0.195. The report and B=128 failed: the pass-dump child process can't open the TPU while the parent holds it. Fixed: dump first |
+| HLO | 113 top-level ops; 10 conv+LayerNorm-reduction `kOutput` fusions. The op counter skipped tuple-shaped ops (fixed); with the fix the L4 graph has 70 ops, not 60 (10 cuDNN conv calls were missed) |
+| `make train` 300 steps | 24.2 ms/step, Sionna wait 12.1 ms/step (data-bound). Process aborted (exit 134) after the last step: prefetch thread still in torch at exit. Fixed: thread joined |
+
 ### Next session (notebook defaults are set for this)
 - [ ] TensorRT: `make trt-install` (libs + bindings wheels from pypi.nvidia.com; the PyPI `tensorrt` sdist failed), `make trt`
 - [ ] Precision: `make backends PRECISION=highest` (true fp32) next to default (TF32); TRT fp32 / tf32 / fp16

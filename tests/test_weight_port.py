@@ -29,4 +29,5 @@ def test_ported_llrs_match_torch(batch):
 
     err = np.max(np.abs(out - ref))
     print(f"max|LLR_jax - LLR_torch| = {err:.3e}, max|LLR| = {np.max(np.abs(ref)):.1f}")
-    assert err < 1e-4
+    # XLA:TPU emulates fp32 convs with bf16 passes even at "highest": ~1e-3 here (3e-5 relative).
+    assert err < (2e-3 if jax.default_backend() == "tpu" else 1e-4)

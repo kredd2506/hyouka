@@ -10,6 +10,7 @@ import collections
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -63,12 +64,42 @@ def entry_kernels(hlo: str):
     entry = hlo[hlo.index("\nENTRY"):]
     kernels = []
     for line in entry.splitlines()[1:]:
-        m = re.match(r"\s*(?:ROOT )?%?([\w.\-]+) = (\S+) (\w[\w-]*)\(", line)
+        # the shape may be a tuple with spaces; it ends at the first closing bracket followed by " opcode("
+        m = re.match(r"\s*(?:ROOT )?%?([\w.\-]+) = (.*?[\]})]) ([a-z][\w-]*)\(", line)
         if not m or m.group(3) in ("parameter", "constant", "tuple", "get-tuple-element", "bitcast", "copy-start", "copy-done"):
             continue
         kind = re.search(r"kind=(k\w+)", line)
         kernels.append((m.group(1), m.group(2), m.group(3) + (f":{kind.group(1)}" if kind else "")))
     return kernels
+
+
+def dump_passes(B, precision):
+    """Compile the forward in a child process with XLA's per-pass dump on; summarize the passes.
+    Must run before this process claims the device, since a TPU can only be opened by one process."""
+    tmp = pathlib.Path("data/xla_dump/_run")
+    shutil.rmtree(tmp, ignore_errors=True)
+    env = dict(os.environ, XLA_FLAGS=f"--xla_dump_to={tmp} --xla_dump_hlo_pass_re=.* --xla_dump_hlo_as_text")
+    code = ("import sys; sys.path.insert(0,'.'); import jax, jax.numpy as jnp; "
+            f"jax.config.update('jax_default_matmul_precision', {None if precision == 'default' else repr(precision)}); "
+            "from nrx.model import NeuralReceiver, make_inputs; from nrx.port_weights import load_reference; "
+            f"p=load_reference(); y=jnp.zeros(({B},2,14,128),jnp.complex64); no=jnp.ones(({B},)); "
+            "jax.jit(lambda p,y,no: NeuralReceiver().apply(p, make_inputs(y,no))).lower(p,y,no).compile(); "
+            "print(jax.default_backend())")
+    out = subprocess.run([sys.executable, "-c", code], env=env, check=True, capture_output=True, text=True)
+    dump = pathlib.Path("data/xla_dump") / out.stdout.split()[-1]
+    shutil.rmtree(dump, ignore_errors=True)
+    tmp.rename(dump)
+    files = sorted(dump.glob("*.txt"))
+    # files: <module>.<seq>.<pipeline>.after_<prev>.before_<next>.txt -> <next> is the pass that runs
+    steps = [m.groups() for f in files if (m := re.search(r"\.\d{4}\.([\w\-]+)\.after_[\w\-]+\.before_([\w\-]+)", f.name))]
+    names = [p for _, p in steps]
+    pipelines = list(dict.fromkeys(pl for pl, _ in steps))
+    return [f"\n## 6. Pass dump: {len(names)} pass runs, {len(set(names))} distinct passes, "
+            f"{len(pipelines)} pipelines, in {dump}/",
+            "  pipelines: " + " → ".join(pipelines),
+            "  most frequent: " + ", ".join(f"{n}×{c}" for n, c in collections.Counter(names).most_common(8)),
+            "  first 8: " + " → ".join(names[:8]),
+            "  last 8:  " + " → ".join(names[-8:])]
 
 
 def main():
@@ -79,6 +110,7 @@ def main():
     args = ap.parse_args()
     jax.config.update("jax_default_matmul_precision", None if args.precision == "default" else args.precision)
     B = args.batch
+    pass_report = dump_passes(B, args.precision) if args.dump_passes else None
     backend = jax.default_backend()
     out_lines = []
 
@@ -110,7 +142,7 @@ def main():
     hlo = compiled.as_text() or ""
     kernels = entry_kernels(hlo) if hlo else []
     kinds = collections.Counter(k[2] for k in kernels)
-    say(f"\n## 3. Optimized HLO: {len(kernels)} kernels launched per call")
+    say(f"\n## 3. Optimized HLO: {len(kernels)} top-level ops per call (each one a kernel launch on GPU)")
     say("  " + ", ".join(f"{k}×{v}" for k, v in kinds.most_common()))
     say("  One residual block, in launch order:")
     start = next((i for i, k in enumerate(kernels) if "layer_norm" in k[0] or "maximum" in k[0]), 0)
@@ -145,25 +177,8 @@ def main():
         f"8 LayerNorms ≈ {full - t['without LayerNorm']:.3f} ms ({(full - t['without LayerNorm']) / full:.0%}), "
         f"dispatch ≈ {floor / full:.0%} of a call")
 
-    if args.dump_passes:
-        dump = pathlib.Path("data/xla_dump") / backend
-        env = dict(os.environ, XLA_FLAGS=f"--xla_dump_to={dump} --xla_dump_hlo_pass_re=.* --xla_dump_hlo_as_text")
-        code = ("import sys; sys.path.insert(0,'.'); import jax, jax.numpy as jnp; "
-                "from nrx.model import NeuralReceiver, make_inputs; from nrx.port_weights import load_reference; "
-                f"p=load_reference(); y=jnp.zeros(({B},2,14,128),jnp.complex64); no=jnp.ones(({B},)); "
-                "jax.jit(lambda p,y,no: NeuralReceiver().apply(p, make_inputs(y,no))).lower(p,y,no).compile()")
-        subprocess.run([sys.executable, "-c", code], env=env, check=True, capture_output=True)
-        files = sorted(dump.glob("*.txt"))
-        # files: <module>.<seq>.<pipeline>.after_<prev>.before_<next>.txt -> <next> is the pass that runs
-        steps = [m.groups() for f in files if (m := re.search(r"\.\d{4}\.([\w\-]+)\.after_[\w\-]+\.before_([\w\-]+)", f.name))]
-        names = [p for _, p in steps]
-        pipelines = list(dict.fromkeys(pl for pl, _ in steps))
-        say(f"\n## 6. Pass dump: {len(names)} pass runs, {len(set(names))} distinct passes, "
-            f"{len(pipelines)} pipelines, in {dump}/")
-        say("  pipelines: " + " → ".join(pipelines))
-        say("  most frequent: " + ", ".join(f"{n}×{c}" for n, c in collections.Counter(names).most_common(8)))
-        say("  first 8: " + " → ".join(names[:8]))
-        say("  last 8:  " + " → ".join(names[-8:]))
+    for line in pass_report or []:
+        say(line)
 
     suffix = "" if args.precision == "default" else f"_{args.precision}"
     out = pathlib.Path("results") / f"compiler_{backend}_b{B}{suffix}.md"

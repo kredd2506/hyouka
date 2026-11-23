@@ -1,0 +1,7 @@
+Mon Nov 23 02:10:07 AM UTC 2026
+Linux ab6a560bf66c 6.6.159+ #1 SMP Thu Oct 22 03:07:54 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+/content/hyouka/.venv/lib/python3.12/site-packages/jax/_src/cloud_tpu_init.py:90: UserWarning: Transparent hugepages are not enabled. TPU runtime startup and shutdown time should be significantly improved on TPU v5e and newer. If not already set, you may need to enable transparent hugepages in your VM image (sudo sh -c "echo always > /sys/kernel/mm/transparent_hugepage/enabled")
+  warnings.warn(
+jax 0.12.1 [TpuDevice(id=0, process_index=0, coords=(0,0,0), core_on_chip=0)]
+torch 2.15.0+cu132 cuda 13.2 False
+flax 0.12.12
